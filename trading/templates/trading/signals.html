@@ -1,0 +1,29 @@
+{#config/trading/templates/trading/signals.html#}
+{% extends "trading/base.html" %}
+
+{% block content %}
+<h2>LIVE EMA Signals</h2>
+
+<table border="1">
+    <tr>
+        <th>Symbol Token</th>
+        <th>Exchange</th>
+        <th>Timeframe</th>
+        <th>Signal</th>
+        <th>Last Close</th>
+        <th>Error</th>
+    </tr>
+
+    {% for item in results %}
+    <tr>
+        <td>{{ item.symbol }}</td>
+        <td>{{ item.exchange }}</td>
+        <td>{{ item.timeframe }}</td>
+        <td>{{ item.signal }}</td>
+        <td>{{ item.last_close }}</td>
+        <td>{{ item.error }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

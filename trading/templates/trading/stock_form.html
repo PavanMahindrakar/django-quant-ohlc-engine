@@ -1,0 +1,15 @@
+{% extends "trading/base.html" %}
+
+{% block content %}
+<h2>Stock Configuration</h2>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save</button>
+</form>
+
+<p>
+    <a href="{% url 'stock_list' %}">Back to list</a>
+</p>
+{% endblock %}
