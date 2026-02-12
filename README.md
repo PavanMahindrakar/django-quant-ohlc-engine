@@ -272,7 +272,7 @@ python manage.py runserver
 
 ## Author
 
-**Pavan Mahindrakar**
+**Pavan Mahindrakar** - 
 Backend & AI/ML Enthusiast
 
 ---
