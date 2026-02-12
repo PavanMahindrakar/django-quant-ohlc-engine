@@ -1,27 +1,52 @@
-# Environment variables
-.env
-*.env
-
+# ---------------------------
 # Python
+# ---------------------------
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 
-# Django
-db.sqlite3
-
-# Virtual environment
+# Virtual Environment
 venv/
 env/
+.venv/
 
-# IDE files
-.vscode/
+# ---------------------------
+# Django
+# ---------------------------
+db.sqlite3
+*.log
+media/
+
+# ---------------------------
+# Environment Variables
+# ---------------------------
+.env
+
+# ---------------------------
+# PyCharm / IDE
+# ---------------------------
 .idea/
+*.iml
 
+# VS Code (optional)
+.vscode/
+
+# ---------------------------
 # OS files
+# ---------------------------
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# ---------------------------
+# Build / Packaging
+# ---------------------------
+build/
+dist/
+*.egg-info/
+
+# ---------------------------
+# Coverage / Testing
+# ---------------------------
+.coverage
+htmlcov/
+.pytest_cache/
