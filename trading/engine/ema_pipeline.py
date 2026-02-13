@@ -1,11 +1,26 @@
 # config/trading/engine/ema_pipeline.py
+"""
+EMA Pipeline Engine
+-------------------
 
-from trading.services.angelone_service import AngelOneService
+This module orchestrates the complete EMA trading flow:
+
+    SmartAPI Session → Fetch OHLC → DataFrame → Indicators → Strategy → Output
+
+It does NOT:
+- Handle session caching (delegated to service layer)
+- Place orders
+- Contain strategy logic
+
+It ONLY coordinates the pipeline.
+"""
+
 from trading.services.data_transformer import ohlc_to_dataframe
 from core.strategies.ema_crossover import ema_crossover_signal
 
 
 def run_ema_pipeline(
+    service,
     symbol_token: str,
     interval: str = "ONE_MINUTE",
     candle_count: int = 100,
@@ -13,23 +28,47 @@ def run_ema_pipeline(
     long_span: int = 21,
 ) -> dict:
     """
-    Full EMA crossover pipeline.
+    Execute full EMA crossover pipeline.
 
-    Flow:
-        1. Login to SmartAPI
-        2. Fetch last N candles
-        3. Convert to pandas DataFrame
-        4. Compute EMAs
-        5. Detect crossover
-        6. Return detailed structured output
+    Parameters:
+    -----------
+    service : AngelOneService
+        Already authenticated SmartAPI service instance.
+        (Login should be handled outside for session reuse.)
+
+    symbol_token : str
+        SmartAPI symbol token.
+
+    interval : str
+        Candle timeframe (e.g., ONE_MINUTE).
+
+    candle_count : int
+        Number of recent candles to fetch.
+
+    short_span : int
+        Short EMA window.
+
+    long_span : int
+        Long EMA window.
+
+    Returns:
+    --------
+    dict
+        {
+            "signal": "BUY" | "SELL" | "NONE",
+            "timestamp": str,
+            "last_close": float,
+            "ema_short": float,
+            "ema_long": float,
+            "diff": float,
+            "last_5_candles": list[dict]
+        }
     """
 
     try:
-        # 1️⃣ Login
-        service = AngelOneService()
-        service.login()
-
-        # 2️⃣ Fetch candles
+        # -------------------------------------------------
+        # 1️⃣ Fetch OHLC data (service must be logged in)
+        # -------------------------------------------------
         raw_data = service.fetch_recent_candles(
             symbol_token=symbol_token,
             interval=interval,
@@ -39,10 +78,14 @@ def run_ema_pipeline(
         if not raw_data:
             return {"error": "No market data received"}
 
-        # 3️⃣ Convert to DataFrame
+        # -------------------------------------------------
+        # 2️⃣ Convert raw data to pandas DataFrame
+        # -------------------------------------------------
         df = ohlc_to_dataframe(raw_data)
 
-        # 4️⃣ Compute EMAs (vectorized)
+        # -------------------------------------------------
+        # 3️⃣ Compute EMA indicators (vectorized)
+        # -------------------------------------------------
         df["ema_short"] = df["close"].ewm(
             span=short_span,
             adjust=False
@@ -53,15 +96,28 @@ def run_ema_pipeline(
             adjust=False
         ).mean()
 
-        # 5️⃣ Compute diff
+        # -------------------------------------------------
+        # 4️⃣ Compute EMA difference
+        # -------------------------------------------------
         df["diff"] = df["ema_short"] - df["ema_long"]
 
-        # 6️⃣ Detect crossover using pure strategy
+        # -------------------------------------------------
+        # 5️⃣ Apply pure strategy logic
+        # -------------------------------------------------
         signal = ema_crossover_signal(df)
 
-        # 7️⃣ Prepare last 5 candles for debugging
-        last_5 = df.tail(5).reset_index().to_dict(orient="records")
+        # -------------------------------------------------
+        # 6️⃣ Prepare debug-friendly output
+        # Convert timestamps to string for JSON safety
+        # -------------------------------------------------
+        # chart_df = df.tail(5).copy()
+        chart_df = df.tail(50).copy().reset_index()
+        chart_df["timestamp"] = chart_df["timestamp"].astype(str)
 
+        candles = chart_df.to_dict(orient="records")
+        # -------------------------------------------------
+        # 7️⃣ Return structured result
+        # -------------------------------------------------
         return {
             "signal": signal,
             "timestamp": str(df.index[-1]),
@@ -69,7 +125,7 @@ def run_ema_pipeline(
             "ema_short": float(df["ema_short"].iloc[-1]),
             "ema_long": float(df["ema_long"].iloc[-1]),
             "diff": float(df["diff"].iloc[-1]),
-            "last_5_candles": last_5,
+            "candles": candles,
         }
 
     except Exception as e:

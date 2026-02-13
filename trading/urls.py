@@ -11,5 +11,9 @@ urlpatterns = [
     path("<int:pk>/delete/", views.stock_delete, name="stock_delete"),
     path("signals/", generate_signals, name="generate_signals"),
     path("api/signals/<str:symbol_token>/", views.api_signal_debug, name="api_signal_debug"),
+    path("demo/", views.run_engine_demo, name="engine_demo"),
+    path("dashboard/", views.engine_dashboard, name="engine_dashboard"),
+
+
 
 ]

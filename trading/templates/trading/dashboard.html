@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trading Engine Dashboard</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
+    <style>
+        body { font-family: Arial; margin: 40px; background:#f4f6f9; }
+        .card { background:white; padding:20px; margin-bottom:20px; border-radius:8px; }
+        .badge { padding:6px 12px; border-radius:6px; color:white; font-weight:bold; }
+        .buy { background:green; }
+        .sell { background:red; }
+        .neutral { background:gray; }
+        button { padding:10px 15px; font-weight:bold; }
+    </style>
+</head>
+<body>
+
+<h2>🚀 Trading Engine Dashboard</h2>
+
+<div class="card">
+    <form method="POST">
+        {% csrf_token %}
+
+        <label>
+            <input type="radio" name="mode" value="dry"
+                {% if mode != "live" %}checked{% endif %}>
+            Dry Run
+        </label>
+
+        <label>
+            <input type="radio" name="mode" value="live"
+                {% if mode == "live" %}checked{% endif %}>
+            Live
+        </label>
+
+        <button type="submit">Run Engine</button>
+    </form>
+</div>
+
+{% if result %}
+
+<div class="card">
+    <h3>📊 Signal Result</h3>
+
+    {% if result.signal_data.signal == "BUY" %}
+        <span class="badge buy">BUY</span>
+    {% elif result.signal_data.signal == "SELL" %}
+        <span class="badge sell">SELL</span>
+    {% else %}
+        <span class="badge neutral">NO SIGNAL</span>
+    {% endif %}
+
+    <p><strong>Last Close:</strong> {{ result.signal_data.last_close }}</p>
+    <p><strong>EMA Short:</strong> {{ result.signal_data.ema_short }}</p>
+    <p><strong>EMA Long:</strong> {{ result.signal_data.ema_long }}</p>
+</div>
+
+<div class="card">
+    <h3>🧾 Order Result</h3>
+    <pre>{{ result.order_result }}</pre>
+</div>
+
+<div class="card">
+    <h3>📦 Current DB Position</h3>
+    {% if trade_state %}
+        <p>Position: {{ trade_state.position }}</p>
+        <p>Last Signal: {{ trade_state.last_signal }}</p>
+    {% else %}
+        <p>No position stored</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3>📈 Chart</h3>
+    <canvas id="candleChart"></canvas>
+</div>
+
+<script>
+const rawData = {{ chart_data|safe|default:"[]" }};
+
+if (rawData.length > 0) {
+
+    const ctx = document.getElementById('candleChart');
+
+    new Chart(ctx, {
+        type: 'candlestick',
+        data: {
+            datasets: [{
+                label: 'Candles',
+                data: rawData.map(c => ({
+                    x: new Date(c.timestamp),
+                    o: c.open,
+                    h: c.high,
+                    l: c.low,
+                    c: c.close
+                }))
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'minute'
+                    }
+                }
+            }
+        }
+    });
+}
+</script>
+
+{% endif %}
+
+</body>
+</html>

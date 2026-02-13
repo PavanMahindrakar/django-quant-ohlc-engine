@@ -94,6 +94,12 @@ DATABASES = {
     }
 }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -137,3 +143,5 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # print("Trading API Key Loaded:", TRADING_API_KEY)
+LIVE_TRADING_ENABLED = True
+DEFAULT_ORDER_QUANTITY = 1

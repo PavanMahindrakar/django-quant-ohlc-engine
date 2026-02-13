@@ -1,101 +1,266 @@
-# trading/services/order_service.py
+"""
+OrderService
+
+Production-grade execution layer.
+
+Implements multi-layer safety architecture:
+
+Layer 1 → Broker position sync (DB reconciliation)
+Layer 2 → Margin validation before BUY
+Layer 3 → Duplicate trade prevention
+Layer 4 → Broker response validation
+Layer 5 → Safe DB update only after confirmed execution
+
+Supports:
+- Dry-run simulation
+- Real SmartAPI execution
+- Global kill switch protection
+"""
 
 import logging
+from django.utils import timezone
 from django.conf import settings
 from trading.models import TradeState
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 
 class OrderService:
+    """
+    Handles safe trade execution.
 
-    def __init__(self, dry_run=True):
+    This class ensures:
+    - No duplicate trades
+    - Margin availability check
+    - DB state stays synced with broker
+    - Broker response validation
+    - Execution only when explicitly enabled
+    """
+
+    def __init__(self, service, dry_run=True):
         """
-        dry_run=True → No real order placed.
-        dry_run=False → Real API call.
+        Parameters
+        ----------
+        service : AngelOneService
+            Logged-in SmartAPI wrapper instance.
+
+        dry_run : bool
+            If True → simulate order only.
+            If False → allow real broker execution
+                       (subject to LIVE_TRADING_ENABLED flag).
         """
+        self.service = service
         self.dry_run = dry_run
 
+    # ==========================================================
+    # LAYER 1 — POSITION SYNC
+    # ==========================================================
 
-    def place_order(self, symbol, exchange, signal):
+    def _sync_position(self, trading_symbol: str):
+        """
+        Sync DB position with broker's actual position.
+
+        Prevents state mismatch between:
+        - Internal database
+        - Broker system
+
+        Updates DB only if mismatch detected.
+        """
+        try:
+            broker_positions = self.service.smart.position()
+
+            if not broker_positions.get("status"):
+                logger.warning("Broker position fetch failed")
+                return
+
+            positions = broker_positions.get("data") or []
+            broker_position = "NONE"
+
+            for pos in positions:
+                if pos.get("tradingsymbol") == trading_symbol:
+                    net_qty = int(pos.get("netqty", 0))
+                    if net_qty > 0:
+                        broker_position = "LONG"
+
+            trade_state, _ = TradeState.objects.get_or_create(
+                symbol=trading_symbol
+            )
+
+            if trade_state.position != broker_position:
+                logger.info(
+                    f"Position sync: {trade_state.position} → {broker_position}"
+                )
+                trade_state.position = broker_position
+                trade_state.save()
+
+        except Exception as e:
+            logger.error(f"Position sync failed: {str(e)}")
+
+    # ==========================================================
+    # LAYER 2 — MARGIN CHECK
+    # ==========================================================
+
+    def _check_margin(self, required_amount: float) -> bool:
+        """
+        Validate available cash before placing BUY order.
+
+        Parameters
+        ----------
+        required_amount : float
+            Approx required capital (price × quantity)
+
+        Returns
+        -------
+        bool
+            True if margin sufficient, else False.
+        """
+        try:
+            rms = self.service.smart.rmsLimit()
+
+            if not rms.get("status"):
+                return False
+
+            available_cash = float(
+                rms["data"].get("availablecash", 0)
+            )
+
+            return available_cash >= required_amount
+
+        except Exception as e:
+            logger.error(f"Margin check failed: {str(e)}")
+            return False
+
+    # ==========================================================
+    # MAIN EXECUTION METHOD
+    # ==========================================================
+
+    def place_order(
+        self,
+        symbol_token: str,
+        trading_symbol: str,
+        exchange: str,
+        signal: str,
+        quantity: int = 1,
+        last_price: float = None,
+    ) -> dict:
+        """
+        Safely execute trade based on signal.
+
+        Strategy Model (Long-only)
+        ---------------------------
+        BUY  → Open LONG
+        SELL → Close LONG
+
+        Returns structured execution response.
+        """
 
         if signal not in ["BUY", "SELL"]:
-            logger.info(f"No valid signal for {symbol}. Skipping order.")
             return {"status": "SKIPPED", "reason": "No valid signal"}
 
-        # Get or create state record
-        trade_state, created = TradeState.objects.get_or_create(
-            symbol=symbol
+        if quantity <= 0:
+            return {"status": "BLOCKED", "reason": "Invalid quantity"}
+
+        # 1️⃣ Sync position
+        self._sync_position(trading_symbol)
+
+        trade_state, _ = TradeState.objects.get_or_create(
+            symbol=trading_symbol
         )
 
         current_position = trade_state.position
 
-        logger.info(f"Current position for {symbol}: {current_position}")
-
-        # Prevent duplicate BUY
+        # Duplicate prevention
         if signal == "BUY" and current_position == "LONG":
-            logger.info(f"Duplicate BUY prevented for {symbol}")
             return {"status": "BLOCKED", "reason": "Already LONG"}
 
-        # Prevent duplicate SELL
-        if signal == "SELL" and current_position == "SHORT":
-            logger.info(f"Duplicate SELL prevented for {symbol}")
-            return {"status": "BLOCKED", "reason": "Already SHORT"}
+        if signal == "SELL" and current_position == "NONE":
+            return {"status": "BLOCKED", "reason": "No position to close"}
 
-        # Determine new position
-        new_position = "LONG" if signal == "BUY" else "SHORT"
+        # 2️⃣ Margin validation
+        if signal == "BUY" and last_price:
+            required_amount = last_price * quantity
+            if not self._check_margin(required_amount):
+                return {
+                    "status": "BLOCKED",
+                    "reason": "Insufficient margin",
+                }
 
-        if self.dry_run:
-            logger.info(f"[DRY RUN] {signal} order for {symbol}")
-        else:
-            logger.info(f"[LIVE] Executing {signal} for {symbol}")
-            # Real API call would go here
-
-        # Update DB state
-        trade_state.position = new_position
-        trade_state.last_signal = signal
-        trade_state.updated_at = timezone.now()
-        trade_state.save()
-
-        return {
-            "status": "EXECUTED" if not self.dry_run else "DRY_RUN",
-            "symbol": symbol,
-            "new_position": new_position
+        # Build broker payload
+        orderparams = {
+            "variety": "NORMAL",
+            "tradingsymbol": trading_symbol,
+            "symboltoken": symbol_token,
+            "transactiontype": signal,
+            "exchange": exchange,
+            "ordertype": "MARKET",
+            "producttype": "INTRADAY",
+            "duration": "DAY",
+            "price": "0",
+            "squareoff": "0",
+            "stoploss": "0",
+            "quantity": str(quantity),
         }
 
+        # ================= DRY RUN =================
+        if self.dry_run:
+            logger.info(f"[DRY RUN] {signal} → {trading_symbol}")
+            return {
+                "status": "DRY_RUN",
+                "payload": orderparams,
+            }
 
-    # def place_order(self, symbol, exchange, signal):
-    #     """
-    #     Places order based on signal.
-    #     """
+        # ================= LIVE EXECUTION =================
 
-    #     if signal not in ["BUY", "SELL"]:
-    #         logger.info(f"No valid signal for {symbol}. Skipping order.")
-    #         return {"status": "SKIPPED", "reason": "No valid signal"}
+        # Global Kill Switch
+        if not getattr(settings, "LIVE_TRADING_ENABLED", False):
+            return {
+                "status": "DISABLED",
+                "reason": "Live trading disabled in settings",
+            }
 
-    #     # 🚨 Safety Check 1: Prevent duplicate execution
-    #     # In real production, this should check DB or position state.
-    #     logger.info(f"Preparing order: {symbol} | {signal}")
+        # Live execution warning log
+        logger.warning(
+            f"🚨 LIVE ORDER ATTEMPT: {signal} {trading_symbol} Qty={quantity}"
+        )
 
-    #     if self.dry_run:
-    #         logger.info(f"[DRY RUN] Order not executed for {symbol}")
-    #         return {
-    #             "status": "DRY_RUN",
-    #             "symbol": symbol,
-    #             "signal": signal
-    #         }
+        try:
+            response = self.service.smart.placeOrder(orderparams)
 
-    #     # 🚀 Real API execution would go here
-    #     try:
-    #         # placeholder for real SmartAPI call
-    #         logger.info(f"Executing LIVE order for {symbol}")
+            # Broker response validation
+            if not response.get("status"):
+                return {
+                    "status": "FAILED",
+                    "error": response.get("message"),
+                    "raw": response,
+                }
 
-    #         # response = smart_api.place_order(...)
-    #         # return response
+            order_id = response.get("data")
 
-    #         return {"status": "LIVE_EXECUTED"}
+            if not order_id:
+                return {
+                    "status": "FAILED",
+                    "error": "No order ID returned",
+                    "raw": response,
+                }
 
-    #     except Exception as e:
-    #         logger.error(f"Order execution failed: {str(e)}")
-    #         return {"status": "FAILED", "error": str(e)}
+            # Update DB only after confirmed execution
+            new_position = "LONG" if signal == "BUY" else "NONE"
+
+            trade_state.position = new_position
+            trade_state.last_signal = signal
+            trade_state.updated_at = timezone.now()
+            trade_state.save()
+
+            return {
+                "status": "EXECUTED",
+                "order_id": order_id,
+                "symbol": trading_symbol,
+                "new_position": new_position,
+            }
+
+        except Exception as e:
+            logger.error(f"Live order failed: {str(e)}")
+            return {
+                "status": "ERROR",
+                "error": str(e),
+            }

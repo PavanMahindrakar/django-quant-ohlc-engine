@@ -1,0 +1,47 @@
+{% extends "trading/base.html" %}
+{% block content %}
+
+<h2>🚀 Trading Engine Demo</h2>
+
+<p><strong>Live Trading:</strong> {{ live_enabled }}</p>
+
+{% if error %}
+    <p style="color:red;">{{ error }}</p>
+{% else %}
+
+<hr>
+
+<h3>📊 Stock Info</h3>
+<ul>
+    <li><strong>Token:</strong> {{ stock.symbol_token }}</li>
+    <li><strong>Trading Symbol:</strong> {{ stock.trading_symbol }}</li>
+    <li><strong>Exchange:</strong> {{ stock.exchange }}</li>
+    <li><strong>Timeframe:</strong> {{ stock.timeframe }}</li>
+</ul>
+
+<hr>
+
+<h3>📈 Signal Output</h3>
+<pre>{{ result.signal_data|safe }}</pre>
+
+<hr>
+
+<h3>🧾 Order Result</h3>
+<pre>{{ result.order_result|safe }}</pre>
+
+<hr>
+
+<h3>📦 Current DB Position</h3>
+{% if trade_state %}
+    <p>
+        Position: {{ trade_state.position }} <br>
+        Last Signal: {{ trade_state.last_signal }} <br>
+        Updated: {{ trade_state.updated_at }}
+    </p>
+{% else %}
+    <p>No DB record yet.</p>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}
