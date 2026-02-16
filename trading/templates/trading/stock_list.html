@@ -20,7 +20,8 @@
     <tbody>
         {% for stock in stocks %}
         <tr>
-            <td>{{ stock.symbol }}</td>
+            <td>{{ stock.trading_symbol }}<br>
+            <small>{{ stock.symbol_token }}</small></td>
             <td>{{ stock.exchange }}</td>
             <td>{{ stock.timeframe }}</td>
             <td>{{ stock.is_active }}</td>

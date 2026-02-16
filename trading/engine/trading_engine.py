@@ -1,3 +1,4 @@
+# config/trading/engine/trading_engine.py
 """
 TradingEngine (Single-Symbol Orchestrator)
 

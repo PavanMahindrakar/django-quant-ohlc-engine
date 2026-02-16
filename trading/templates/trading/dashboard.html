@@ -1,121 +1,182 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Trading Engine Dashboard</title>
-
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <title>Quant Trading Engine Terminal</title>
 
     <style>
-        body { font-family: Arial; margin: 40px; background:#f4f6f9; }
-        .card { background:white; padding:20px; margin-bottom:20px; border-radius:8px; }
-        .badge { padding:6px 12px; border-radius:6px; color:white; font-weight:bold; }
-        .buy { background:green; }
-        .sell { background:red; }
-        .neutral { background:gray; }
-        button { padding:10px 15px; font-weight:bold; }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Arial;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .topbar {
+            background: #111827;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        .container {
+            padding: 20px 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background: #0b1220;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+
+        button {
+            background: #2563eb;
+            border: none;
+            padding: 8px 14px;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .badge {
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
+        .buy { background: #16a34a; }
+        .sell { background: #dc2626; }
+        .neutral { background: #64748b; }
+
+        .spinner {
+            display:none;
+            margin-left:10px;
+        }
+
+        .full {
+            grid-column: 1 / span 2;
+        }
     </style>
 </head>
 <body>
 
-<h2>🚀 Trading Engine Dashboard</h2>
+<div class="topbar">
+    <h2>Quant Trading Engine – Institutional Demo</h2>
 
-<div class="card">
-    <form method="POST">
-        {% csrf_token %}
+    <div>
+        <select id="mode">
+            <option value="dry">Dry Run</option>
+            <option value="live">Live</option>
+        </select>
 
-        <label>
-            <input type="radio" name="mode" value="dry"
-                {% if mode != "live" %}checked{% endif %}>
-            Dry Run
-        </label>
-
-        <label>
-            <input type="radio" name="mode" value="live"
-                {% if mode == "live" %}checked{% endif %}>
-            Live
-        </label>
-
-        <button type="submit">Run Engine</button>
-    </form>
+        <button onclick="runEngine()">Run Engine</button>
+        <span class="spinner">Executing...</span>
+    </div>
 </div>
 
-{% if result %}
+<div class="container">
 
-<div class="card">
-    <h3>📊 Signal Result</h3>
+    <!-- LOGIN PANEL -->
+    <div class="panel">
+        <div class="panel-title">Login Layer</div>
+        <pre id="loginPanel"></pre>
+    </div>
 
-    {% if result.signal_data.signal == "BUY" %}
-        <span class="badge buy">BUY</span>
-    {% elif result.signal_data.signal == "SELL" %}
-        <span class="badge sell">SELL</span>
-    {% else %}
-        <span class="badge neutral">NO SIGNAL</span>
-    {% endif %}
+    <!-- STRATEGY PANEL -->
+    <div class="panel">
+        <div class="panel-title">Signal Generation</div>
+        <pre id="strategyPanel"></pre>
+    </div>
 
-    <p><strong>Last Close:</strong> {{ result.signal_data.last_close }}</p>
-    <p><strong>EMA Short:</strong> {{ result.signal_data.ema_short }}</p>
-    <p><strong>EMA Long:</strong> {{ result.signal_data.ema_long }}</p>
-</div>
+    <!-- RAW OHLC PANEL -->
+    <div class="panel full">
+        <div class="panel-title">Raw OHLC Data (Last 5)</div>
+        <pre id="ohlcPanel"></pre>
+    </div>
 
-<div class="card">
-    <h3>🧾 Order Result</h3>
-    <pre>{{ result.order_result }}</pre>
-</div>
+    <!-- DATAFRAME DEBUG PANEL -->
+    <div class="panel">
+        <div class="panel-title">Data Transformation Debug</div>
+        <pre id="dfPanel"></pre>
+    </div>
 
-<div class="card">
-    <h3>📦 Current DB Position</h3>
-    {% if trade_state %}
-        <p>Position: {{ trade_state.position }}</p>
-        <p>Last Signal: {{ trade_state.last_signal }}</p>
-    {% else %}
-        <p>No position stored</p>
-    {% endif %}
-</div>
+    <!-- EXECUTION PANEL -->
+    <div class="panel">
+        <div class="panel-title">Order Execution</div>
+        <pre id="orderPanel"></pre>
+    </div>
 
-<div class="card">
-    <h3>📈 Chart</h3>
-    <canvas id="candleChart"></canvas>
 </div>
 
 <script>
-const rawData = {{ chart_data|safe|default:"[]" }};
 
-if (rawData.length > 0) {
+function runEngine() {
 
-    const ctx = document.getElementById('candleChart');
+    document.querySelector(".spinner").style.display = "inline";
 
-    new Chart(ctx, {
-        type: 'candlestick',
-        data: {
-            datasets: [{
-                label: 'Candles',
-                data: rawData.map(c => ({
-                    x: new Date(c.timestamp),
-                    o: c.open,
-                    h: c.high,
-                    l: c.low,
-                    c: c.close
-                }))
-            }]
+    const mode = document.getElementById("mode").value;
+
+    fetch("/stocks/api/engine/run/", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
         },
-        options: {
-            responsive: true,
-            scales: {
-                x: {
-                    type: 'time',
-                    time: {
-                        unit: 'minute'
-                    }
-                }
-            }
-        }
+        body: `mode=${mode}`
+    })
+    .then(res => res.json())
+    .then(data => {
+
+        document.querySelector(".spinner").style.display = "none";
+
+        // ================= LOGIN PANEL =================
+        document.getElementById("loginPanel").textContent =
+            JSON.stringify(data.login, null, 2);
+
+        // ================= STRATEGY PANEL =================
+        document.getElementById("strategyPanel").textContent =
+            JSON.stringify(data.signal, null, 2);
+
+        // ================= OHLC PANEL (Preview + Meta) =================
+        document.getElementById("ohlcPanel").textContent =
+            JSON.stringify({
+                meta: data.ohlc_meta,
+                preview: data.ohlc_preview
+            }, null, 2);
+
+        // ================= DATAFRAME DEBUG =================
+        document.getElementById("dfPanel").textContent =
+            JSON.stringify(data.df_debug, null, 2);
+
+        // ================= ORDER PANEL =================
+        document.getElementById("orderPanel").textContent =
+            JSON.stringify(data.order_result, null, 2);
+
+    })
+    .catch(error => {
+        document.querySelector(".spinner").style.display = "none";
+        console.error("Engine error:", error);
     });
 }
 </script>
-
-{% endif %}
 
 </body>
 </html>

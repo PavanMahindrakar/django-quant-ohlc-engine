@@ -1,19 +1,18 @@
 # config/trading/urls.py
 from django.urls import path
 from . import views
-from .views import generate_signals
-
 
 urlpatterns = [
+
+    # CRUD
     path("", views.stock_list, name="stock_list"),
     path("create/", views.stock_create, name="stock_create"),
     path("<int:pk>/edit/", views.stock_update, name="stock_update"),
     path("<int:pk>/delete/", views.stock_delete, name="stock_delete"),
-    path("signals/", generate_signals, name="generate_signals"),
-    path("api/signals/<str:symbol_token>/", views.api_signal_debug, name="api_signal_debug"),
-    path("demo/", views.run_engine_demo, name="engine_demo"),
-    path("dashboard/", views.engine_dashboard, name="engine_dashboard"),
 
+    # Dashboard UI
+    path("dashboard/", views.dashboard_page, name="dashboard"),
 
-
+    # Engine API
+    path("api/engine/run/", views.engine_run_api, name="engine_run_api"),
 ]

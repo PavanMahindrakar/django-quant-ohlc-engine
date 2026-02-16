@@ -256,6 +256,8 @@ class OrderService:
                 "order_id": order_id,
                 "symbol": trading_symbol,
                 "new_position": new_position,
+                "broker_response": response,
+                "payload_sent": orderparams,
             }
 
         except Exception as e:

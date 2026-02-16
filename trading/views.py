@@ -1,19 +1,21 @@
 # config/trading/views.py
+
 import json
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
-from trading.services.angelone_service import AngelOneService
-from trading.engine.ema_pipeline import run_ema_pipeline
-from trading.models import StockConfig, TradeState
-from .forms import StockConfigForm
-from trading.engine.trading_engine import TradingEngine
-from django.conf import settings
-from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
+from django.utils import timezone
 
-# -------------------------------
-# CRUD Views
-# -------------------------------
+from trading.models import StockConfig, TradeState
+from trading.services.angelone_service import AngelOneService
+from trading.engine.trading_engine import TradingEngine
+from .forms import StockConfigForm
+
+
+# ==========================================================
+# CRUD VIEWS
+# ==========================================================
 
 def stock_list(request):
     stocks = StockConfig.objects.all()
@@ -56,205 +58,151 @@ def stock_delete(request, pk):
     return render(request, "trading/stock_confirm_delete.html", {"stock": stock})
 
 
-# -------------------------------
-# LIVE Signal Page (UI)
-# -------------------------------
+# ==========================================================
+# DASHBOARD PAGE (UI ONLY)
+# ==========================================================
 
-def generate_signals(request):
+def dashboard_page(request):
     """
-    Reads active stocks from DB,
-    runs EMA pipeline for each,
-    and displays latest signal.
-    """
-
-    stocks = StockConfig.objects.filter(is_active=True)
-    results = []
-
-    print("Running LIVE EMA pipeline...")
-
-    for stock in stocks:
-
-        result = run_ema_pipeline(
-            symbol_token=stock.symbol,
-            interval=stock.timeframe,
-            candle_count=100,
-        )
-
-        print(f"{stock.symbol} -> {result}")
-
-        results.append({
-            "symbol": stock.symbol,
-            "exchange": stock.exchange,
-            "timeframe": stock.timeframe,
-            "signal": result.get("signal"),
-            "last_close": result.get("last_close"),
-            "error": result.get("error"),
-        })
-
-    return render(request, "trading/signals.html", {"results": results})
-
-
-# -------------------------------
-# DEBUG API (JSON View)
-# -------------------------------
-
-def api_signal_debug(request, symbol_token):
-    """
-    Debug Endpoint
-    --------------
-
-    Returns full EMA calculation details as JSON.
-
-    Flow:
-        1. Create SmartAPI service
-        2. Login once
-        3. Run EMA pipeline
-        4. Return structured debug output
-    """
-
-    try:
-        # ----------------------------------------
-        # 1️⃣ Initialize SmartAPI service
-        # ----------------------------------------
-        service = AngelOneService()
-
-        login_response = service.login()
-
-        if not login_response.get("status"):
-            return JsonResponse(
-                {"error": "SmartAPI login failed"},
-                status=500
-            )
-
-        # ----------------------------------------
-        # 2️⃣ Run EMA pipeline
-        # ----------------------------------------
-        result = run_ema_pipeline(
-            service=service,
-            symbol_token=symbol_token,
-            interval="ONE_MINUTE",
-            candle_count=100,
-        )
-
-        # ----------------------------------------
-        # 3️⃣ Return JSON response
-        # ----------------------------------------
-        return JsonResponse(result, safe=True)
-
-    except Exception as e:
-        return JsonResponse(
-            {"error": str(e)},
-            status=500
-        )
-
-
-def run_engine_demo(request):
-    """
-    Browser-based demo endpoint.
-
-    Runs full TradingEngine for one stock
-    and displays complete structured result.
+    Renders trading terminal UI only.
+    No execution logic here.
     """
 
     stock = StockConfig.objects.filter(is_active=True).first()
 
-    if not stock:
-        return render(request, "trading/demo.html", {
-            "error": "No active stock configured"
-        })
+    return render(request, "trading/dashboard.html", {
+        "stock": stock,
+        "live_enabled": getattr(settings, "LIVE_TRADING_ENABLED", False)
+    })
 
+
+# ==========================================================
+# ENGINE EXECUTION API (AJAX POST)
+# ==========================================================
+
+@csrf_exempt
+def engine_run_api(request):
+    """
+    AJAX endpoint for running trading engine.
+
+    Flow:
+    - Login
+    - Run strategy
+    - Risk management
+    - Place order (if allowed)
+    - Return structured JSON response
+    """
+
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    stock = StockConfig.objects.filter(is_active=True).first()
+
+    if not stock:
+        return JsonResponse({"error": "No active stock configured"}, status=400)
+
+    mode = request.POST.get("mode", "dry")
+
+    live_allowed = (
+        mode == "live" and
+        getattr(settings, "LIVE_TRADING_ENABLED", False)
+    )
+
+    dry_run = not live_allowed
+
+    # ---------------- LOGIN ----------------
     service = AngelOneService()
     login_resp = service.login()
 
-    if not login_resp.get("status"):
-        return render(request, "trading/demo.html", {
-            "error": "Login failed"
-        })
+    login_time = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    engine = TradingEngine(
-        service=service,
-        dry_run=not settings.LIVE_TRADING_ENABLED
-    )
+    if not login_resp.get("status"):
+        return JsonResponse({"error": "Login failed"}, status=500)
+
+    # ---------------- ENGINE ----------------
+    engine = TradingEngine(service=service, dry_run=dry_run)
 
     result = engine.run(
         symbol_token=stock.symbol_token,
         trading_symbol=stock.trading_symbol,
         exchange=stock.exchange,
         interval=stock.timeframe,
-        candle_count=100,
-        quantity=1,
+        candle_count=50,
+        quantity=getattr(settings, "DEFAULT_ORDER_QUANTITY", 1),
     )
 
-    # Fetch current DB state
+    # ---------------- BROKER SNAPSHOT ----------------
+    # -------- Safe Broker Calls --------
+    try:
+        margin = service.smart.rmsLimit()
+    except Exception as e:
+        margin = {"status": False, "error": str(e)}
+
+    try:
+        orderbook_resp = service.smart.orderBook()
+        orderbook = orderbook_resp.get("data", []) if orderbook_resp else []
+    except Exception as e:
+        orderbook = []
+
+    filtered_orders = [
+        o for o in orderbook
+        if o.get("tradingsymbol") == stock.trading_symbol
+    ]
+
     trade_state = TradeState.objects.filter(
         symbol=stock.trading_symbol
     ).first()
 
-    return render(request, "trading/demo.html", {
-        "stock": stock,
-        "result": result,
-        "trade_state": trade_state,
-        "live_enabled": settings.LIVE_TRADING_ENABLED,
-    })
-
-
-@csrf_exempt
-def engine_dashboard(request):
-    """
-    Interactive Trading Engine Dashboard.
-    """
-
-    stock = StockConfig.objects.filter(is_active=True).first()
-
-    context = {
-        "stock": stock,
-        "mode": "dry",  # default
-        "chart_data": "[]"
+    # After login
+    login_data = {
+        "status": login_resp.get("status"),
+        "clientcode": login_resp.get("data", {}).get("clientcode"),
+        "message": login_resp.get("message"),
+        "login_time": timezone.now().isoformat()
     }
 
-    if not stock:
-        context["error"] = "No active stock configured"
-        return render(request, "trading/dashboard.html", context)
+    signal_data = result.get("signal_data", {})
+    candles = signal_data.get("candles", [])
 
-    if request.method == "POST":
+    # Remove candles from signal panel
+    clean_signal = {
+        "signal": signal_data.get("signal"),
+        "timestamp": signal_data.get("timestamp"),
+        "last_close": signal_data.get("last_close"),
+        "ema_short": signal_data.get("ema_short"),
+        "ema_long": signal_data.get("ema_long"),
+        "diff": signal_data.get("diff"),
+    }
 
-        mode = request.POST.get("mode", "dry")
-        # Live allowed only if BOTH selected AND globally enabled
-        live_allowed = (
-                mode == "live" and
-                getattr(settings, "LIVE_TRADING_ENABLED", False)
-        )
-        dry_run = not live_allowed
+    # DataFrame debug info
+    df_debug = {
+        "rows": len(candles),
+        "columns": list(candles[0].keys()) if candles else []
+    }
 
-        context["mode"] = mode
+    preview_count = 5  # change to 2 if you want
 
-        service = AngelOneService()
-        login_resp = service.login()
+    return JsonResponse({
+        "login": login_data,
+        "signal": clean_signal,
 
-        if not login_resp.get("status"):
-            context["error"] = "Login failed"
-            return render(request, "trading/dashboard.html", context)
+        # 🔹 Only preview subset
+        "ohlc_preview": candles[-preview_count:],
 
-        engine = TradingEngine(service=service, dry_run=dry_run)
+        # 🔹 Metadata
+        "ohlc_meta": {
+            "total_candles": len(candles),
+            "first_timestamp": candles[0]["timestamp"] if candles else None,
+            "last_timestamp": candles[-1]["timestamp"] if candles else None,
+        },
 
-        result = engine.run(
-            symbol_token=stock.symbol_token,
-            trading_symbol=stock.trading_symbol,
-            exchange=stock.exchange,
-            interval=stock.timeframe,
-            candle_count=50,
-            quantity=getattr(settings, "DEFAULT_ORDER_QUANTITY", 1),
-        )
-
-        signal_data = result.get("signal_data", {})
-        candles = signal_data.get("candles", [])
-
-        context.update({
-            "result": result,
-            "trade_state": TradeState.objects.filter(
-                symbol=stock.trading_symbol
-            ).first(),
-            "chart_data": json.dumps(candles),
-        })
-
-    return render(request, "trading/dashboard.html", context)
+        "df_debug": df_debug,
+        "order_result": result.get("order_result"),
+        "margin": margin,
+        "trade_state": {
+            "position": trade_state.position if trade_state else "NONE",
+            "last_signal": trade_state.last_signal if trade_state else "NONE",
+        },
+        "orders": filtered_orders,
+        "server_time": timezone.now().isoformat()
+    })
