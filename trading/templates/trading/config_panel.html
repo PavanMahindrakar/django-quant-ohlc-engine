@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Institutional Strategy Configuration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 40px;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+        }
+
+        .container {
+            display: flex;
+            gap: 40px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0px 2px 6px rgba(0,0,0,0.08);
+        }
+
+        .form-card {
+            width: 40%;
+        }
+
+        .table-card {
+            width: 60%;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 12px;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        button {
+            padding: 10px 16px;
+            font-weight: bold;
+            background: #1f2937;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #111827;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #f0f2f5;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .active {
+            background: #16a34a;
+            color: white;
+        }
+
+        .inactive {
+            background: #dc2626;
+            color: white;
+        }
+
+        .edit-btn {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<h2>⚙ Institutional Strategy Configuration</h2>
+
+<div class="container">
+
+    <!-- ================= FORM SECTION ================= -->
+    <div class="card form-card">
+
+        <h3>Add / Edit Instrument</h3>
+
+        <form method="POST">
+            {% csrf_token %}
+
+            <label>Symbol Token</label>
+            {{ form.symbol_token }}
+
+            <label>Trading Symbol</label>
+            {{ form.trading_symbol }}
+
+            <label>Exchange</label>
+            {{ form.exchange }}
+
+            <label>Timeframe</label>
+            {{ form.timeframe }}
+
+            <hr>
+
+            <h4>Strategy Parameters</h4>
+
+            <label>Short EMA Span</label>
+            {{ form.short_span }}
+
+            <label>Long EMA Span</label>
+            {{ form.long_span }}
+
+            <label>Candle Count</label>
+            {{ form.candle_count }}
+
+            <label>Signal Validity (minutes)</label>
+            {{ form.signal_validity_minutes }}
+
+            <label>Active</label>
+            {{ form.is_active }}
+
+            <button type="submit">Save Configuration</button>
+        </form>
+
+    </div>
+
+    <!-- ================= TABLE SECTION ================= -->
+    <div class="card table-card">
+
+        <h3>Configured Instruments</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Exchange</th>
+                    <th>Timeframe</th>
+                    <th>EMA</th>
+                    <th>Active</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                {% for stock in stocks %}
+                <tr>
+                    <td>{{ stock.trading_symbol }}</td>
+                    <td>{{ stock.exchange }}</td>
+                    <td>{{ stock.timeframe }}</td>
+
+                    <td>
+                        {% if stock.strategy %}
+                            {{ stock.strategy.short_span }} /
+                            {{ stock.strategy.long_span }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if stock.is_active %}
+                            <span class="badge active">ACTIVE</span>
+                        {% else %}
+                            <span class="badge inactive">INACTIVE</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        <a href="{% url 'config_edit' stock.id %}" class="edit-btn">
+                            Edit
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6">No instruments configured.</td>
+                </tr>
+                {% endfor %}
+
+            </tbody>
+        </table>
+
+    </div>
+
+</div>
+
+</body>
+</html>

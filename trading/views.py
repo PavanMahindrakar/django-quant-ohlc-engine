@@ -1,73 +1,72 @@
 # config/trading/views.py
 
-import json
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.utils import timezone
 
-from trading.models import StockConfig, TradeState
+from trading.models import (
+    StockConfig,
+    TradeState,
+    SignalLog,
+    StrategyConfig,
+)
 from trading.services.angelone_service import AngelOneService
 from trading.engine.trading_engine import TradingEngine
-from .forms import StockConfigForm
+from trading.forms import CombinedConfigForm
 
 
 # ==========================================================
-# CRUD VIEWS
+# INSTITUTIONAL CONFIG PANEL (Replaces Admin)
 # ==========================================================
 
-def stock_list(request):
-    stocks = StockConfig.objects.all()
-    return render(request, "trading/stock_list.html", {"stocks": stocks})
+def config_panel(request, pk=None):
+    """
+    Institutional Stock + Strategy Configuration Panel.
+    Handles:
+    - Create new instrument
+    - Edit existing instrument
+    - Strategy configuration
+    """
 
+    instance = None
 
-def stock_create(request):
+    if pk:
+        instance = get_object_or_404(StockConfig, pk=pk)
+
     if request.method == "POST":
-        form = StockConfigForm(request.POST)
+        form = CombinedConfigForm(request.POST, instance=instance)
         if form.is_valid():
             form.save()
-            return redirect("stock_list")
+            return redirect("config_panel")
     else:
-        form = StockConfigForm()
+        initial_data = {}
 
-    return render(request, "trading/stock_form.html", {"form": form})
+        if instance and hasattr(instance, "strategy"):
+            strategy = instance.strategy
+            initial_data = {
+                "short_span": strategy.short_span,
+                "long_span": strategy.long_span,
+                "candle_count": strategy.candle_count,
+                "signal_validity_minutes": strategy.signal_validity_minutes,
+            }
 
+        form = CombinedConfigForm(instance=instance, initial=initial_data)
 
-def stock_update(request, pk):
-    stock = get_object_or_404(StockConfig, pk=pk)
+    stocks = StockConfig.objects.all().select_related("strategy")
 
-    if request.method == "POST":
-        form = StockConfigForm(request.POST, instance=stock)
-        if form.is_valid():
-            form.save()
-            return redirect("stock_list")
-    else:
-        form = StockConfigForm(instance=stock)
-
-    return render(request, "trading/stock_form.html", {"form": form})
-
-
-def stock_delete(request, pk):
-    stock = get_object_or_404(StockConfig, pk=pk)
-
-    if request.method == "POST":
-        stock.delete()
-        return redirect("stock_list")
-
-    return render(request, "trading/stock_confirm_delete.html", {"stock": stock})
+    return render(request, "trading/config_panel.html", {
+        "form": form,
+        "stocks": stocks
+    })
 
 
 # ==========================================================
-# DASHBOARD PAGE (UI ONLY)
+# DASHBOARD
 # ==========================================================
 
 def dashboard_page(request):
-    """
-    Renders trading terminal UI only.
-    No execution logic here.
-    """
-
     stock = StockConfig.objects.filter(is_active=True).first()
 
     return render(request, "trading/dashboard.html", {
@@ -77,26 +76,15 @@ def dashboard_page(request):
 
 
 # ==========================================================
-# ENGINE EXECUTION API (AJAX POST)
+# ENGINE API
 # ==========================================================
-
 @csrf_exempt
 def engine_run_api(request):
-    """
-    AJAX endpoint for running trading engine.
-
-    Flow:
-    - Login
-    - Run strategy
-    - Risk management
-    - Place order (if allowed)
-    - Return structured JSON response
-    """
 
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=405)
 
-    stock = StockConfig.objects.filter(is_active=True).first()
+    stock = StockConfig.objects.filter(is_active=True).select_related("strategy").first()
 
     if not stock:
         return JsonResponse({"error": "No active stock configured"}, status=400)
@@ -114,8 +102,6 @@ def engine_run_api(request):
     service = AngelOneService()
     login_resp = service.login()
 
-    login_time = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
-
     if not login_resp.get("status"):
         return JsonResponse({"error": "Login failed"}, status=500)
 
@@ -123,48 +109,16 @@ def engine_run_api(request):
     engine = TradingEngine(service=service, dry_run=dry_run)
 
     result = engine.run(
-        symbol_token=stock.symbol_token,
-        trading_symbol=stock.trading_symbol,
-        exchange=stock.exchange,
-        interval=stock.timeframe,
-        candle_count=50,
+        stock=stock,
         quantity=getattr(settings, "DEFAULT_ORDER_QUANTITY", 1),
     )
 
-    # ---------------- BROKER SNAPSHOT ----------------
-    # -------- Safe Broker Calls --------
-    try:
-        margin = service.smart.rmsLimit()
-    except Exception as e:
-        margin = {"status": False, "error": str(e)}
-
-    try:
-        orderbook_resp = service.smart.orderBook()
-        orderbook = orderbook_resp.get("data", []) if orderbook_resp else []
-    except Exception as e:
-        orderbook = []
-
-    filtered_orders = [
-        o for o in orderbook
-        if o.get("tradingsymbol") == stock.trading_symbol
-    ]
-
-    trade_state = TradeState.objects.filter(
-        symbol=stock.trading_symbol
-    ).first()
-
-    # After login
-    login_data = {
-        "status": login_resp.get("status"),
-        "clientcode": login_resp.get("data", {}).get("clientcode"),
-        "message": login_resp.get("message"),
-        "login_time": timezone.now().isoformat()
-    }
-
     signal_data = result.get("signal_data", {})
+    order_result = result.get("order_result", {})
+
     candles = signal_data.get("candles", [])
 
-    # Remove candles from signal panel
+    # 🔹 CLEAN SIGNAL PANEL (NO CANDLES HERE)
     clean_signal = {
         "signal": signal_data.get("signal"),
         "timestamp": signal_data.get("timestamp"),
@@ -174,35 +128,66 @@ def engine_run_api(request):
         "diff": signal_data.get("diff"),
     }
 
-    # DataFrame debug info
+    # 🔹 OHLC PREVIEW (ONLY LAST 5)
+    preview_count = 1
+    ohlc_preview = candles[-preview_count:] if candles else []
+
+    # 🔹 DF DEBUG BLOCK
     df_debug = {
         "rows": len(candles),
         "columns": list(candles[0].keys()) if candles else []
     }
 
-    preview_count = 5  # change to 2 if you want
+    # ---------------- SAFE BROKER CALLS ----------------
+    try:
+        margin = service.smart.rmsLimit()
+    except Exception as e:
+        margin = {"status": False, "error": str(e)}
+
+    trade_state = TradeState.objects.filter(
+        symbol=stock.trading_symbol
+    ).first()
+
+    login_data = {
+        "status": login_resp.get("status"),
+        "clientcode": login_resp.get("data", {}).get("clientcode"),
+        "message": login_resp.get("message"),
+        "login_time": timezone.now().isoformat()
+    }
 
     return JsonResponse({
         "login": login_data,
         "signal": clean_signal,
-
-        # 🔹 Only preview subset
-        "ohlc_preview": candles[-preview_count:],
-
-        # 🔹 Metadata
+        "ohlc_preview": ohlc_preview,
         "ohlc_meta": {
             "total_candles": len(candles),
             "first_timestamp": candles[0]["timestamp"] if candles else None,
             "last_timestamp": candles[-1]["timestamp"] if candles else None,
         },
-
         "df_debug": df_debug,
-        "order_result": result.get("order_result"),
+        "order_result": order_result,
         "margin": margin,
         "trade_state": {
             "position": trade_state.position if trade_state else "NONE",
             "last_signal": trade_state.last_signal if trade_state else "NONE",
         },
-        "orders": filtered_orders,
         "server_time": timezone.now().isoformat()
+    })
+
+
+# ==========================================================
+# SIGNAL HISTORY PAGE
+# ==========================================================
+
+def signal_history_page(request):
+
+    signals = (
+        SignalLog.objects
+        .select_related("stock")
+        .all()
+        .order_by("-generated_at")[:100]
+    )
+
+    return render(request, "trading/signal_logs.html", {
+        "signals": signals
     })

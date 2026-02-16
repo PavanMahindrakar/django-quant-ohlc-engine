@@ -1,5 +1,28 @@
+"""
+EMA Pipeline Engine
+-------------------
+
+This module orchestrates the complete EMA trading flow:
+
+    SmartAPI Session
+        ↓
+    Fetch OHLC
+        ↓
+    Transform to DataFrame
+        ↓
+    Compute EMAs
+        ↓
+    Detect Fresh Crossover
+        ↓
+    Return Structured Signal Output
+
+Important:
+- Generates signal ONLY if crossover occurs on latest candle
+- Prevents stale signal execution
+- Returns debug metadata for dashboard visibility
+"""
+
 from trading.services.data_transformer import ohlc_to_dataframe
-from core.strategies.ema_crossover import ema_crossover_signal
 
 
 def run_ema_pipeline(
@@ -11,19 +34,34 @@ def run_ema_pipeline(
     long_span: int = 21,
 ) -> dict:
     """
-    Execute full EMA crossover pipeline.
+    Execute strict EMA crossover pipeline.
 
-    Returns structured result including:
-    - Signal
-    - Latest EMA values
-    - EMA diff
-    - Last 50 candles (chart-ready)
-    - Crossover flag per candle
+    Signal Rules:
+    -------------
+    BUY  → Short EMA crosses above Long EMA on latest candle
+    SELL → Short EMA crosses below Long EMA on latest candle
+    NONE → No fresh crossover
+
+    Returns:
+    --------
+    dict:
+        {
+            "signal": str,
+            "timestamp": str,
+            "last_close": float,
+            "ema_short": float,
+            "ema_long": float,
+            "diff": float,
+            "candles": list,
+            "ohlc_count": int,
+            "df_shape": tuple,
+            "df_columns": list
+        }
     """
 
     try:
         # -------------------------------------------------
-        # 1️⃣ Fetch OHLC data
+        # 1️⃣ Fetch OHLC Data
         # -------------------------------------------------
         raw_data = service.fetch_recent_candles(
             symbol_token=symbol_token,
@@ -35,9 +73,12 @@ def run_ema_pipeline(
             return {"error": "No market data received"}
 
         # -------------------------------------------------
-        # 2️⃣ Convert to DataFrame
+        # 2️⃣ Transform to DataFrame
         # -------------------------------------------------
         df = ohlc_to_dataframe(raw_data)
+
+        if len(df) < 2:
+            return {"error": "Not enough candles for crossover detection"}
 
         # -------------------------------------------------
         # 3️⃣ Compute EMAs
@@ -53,12 +94,12 @@ def run_ema_pipeline(
         ).mean()
 
         # -------------------------------------------------
-        # 4️⃣ EMA difference
+        # 4️⃣ EMA Difference
         # -------------------------------------------------
         df["diff"] = df["ema_short"] - df["ema_long"]
 
         # -------------------------------------------------
-        # 5️⃣ Detect crossover points
+        # 5️⃣ Detect Crossover Points
         # -------------------------------------------------
         df["crossover"] = (
             ((df["diff"] > 0) & (df["diff"].shift(1) <= 0)) |
@@ -66,20 +107,30 @@ def run_ema_pipeline(
         )
 
         # -------------------------------------------------
-        # 6️⃣ Strategy signal
+        # 6️⃣ Strict Fresh Crossover Signal Logic
         # -------------------------------------------------
-        signal = ema_crossover_signal(df)
+        latest_crossover = df["crossover"].iloc[-1]
+        current_diff = df["diff"].iloc[-1]
+
+        if latest_crossover:
+            if current_diff > 0:
+                signal = "BUY"
+            elif current_diff < 0:
+                signal = "SELL"
+            else:
+                signal = "NONE"
+        else:
+            signal = "NONE"
 
         # -------------------------------------------------
-        # 7️⃣ Prepare last 50 candles for chart
+        # 7️⃣ Prepare Last 50 Candles for UI / Debug
         # -------------------------------------------------
         chart_df = df.tail(50).copy().reset_index()
         chart_df["timestamp"] = chart_df["timestamp"].astype(str)
-
         candles = chart_df.to_dict(orient="records")
 
         # -------------------------------------------------
-        # 8️⃣ Return structured result
+        # 8️⃣ Return Structured Output
         # -------------------------------------------------
         return {
             "signal": signal,
@@ -87,7 +138,7 @@ def run_ema_pipeline(
             "last_close": float(df["close"].iloc[-1]),
             "ema_short": float(df["ema_short"].iloc[-1]),
             "ema_long": float(df["ema_long"].iloc[-1]),
-            "diff": float(df["diff"].iloc[-1]),
+            "diff": float(current_diff),
             "candles": candles,
             "ohlc_count": len(raw_data),
             "df_shape": df.shape,
@@ -96,3 +147,128 @@ def run_ema_pipeline(
 
     except Exception as e:
         return {"error": str(e)}
+
+
+
+
+
+
+
+# from trading.services.data_transformer import ohlc_to_dataframe
+# from core.strategies.ema_crossover import ema_crossover_signal
+# from django.conf import settings
+#
+# def run_ema_pipeline(
+#     service,
+#     symbol_token: str,
+#     interval: str = "ONE_MINUTE",
+#     candle_count: int = 100,
+#     short_span: int = 9,
+#     long_span: int = 21,
+# ) -> dict:
+#     """
+#     Execute full EMA crossover pipeline.
+#
+#     Returns structured result including:
+#     - Signal
+#     - Latest EMA values
+#     - EMA diff
+#     - Last 50 candles (chart-ready)
+#     - Crossover flag per candle
+#     """
+#
+#     try:
+#         # -------------------------------------------------
+#         # 1️⃣ Fetch OHLC data
+#         # -------------------------------------------------
+#         raw_data = service.fetch_recent_candles(
+#             symbol_token=symbol_token,
+#             interval=interval,
+#             n=candle_count,
+#         )
+#
+#         if not raw_data:
+#             return {"error": "No market data received"}
+#
+#         # -------------------------------------------------
+#         # 2️⃣ Convert to DataFrame
+#         # -------------------------------------------------
+#         df = ohlc_to_dataframe(raw_data)
+#
+#         # -------------------------------------------------
+#         # 3️⃣ Compute EMAs
+#         # -------------------------------------------------
+#         df["ema_short"] = df["close"].ewm(
+#             span=short_span,
+#             adjust=False
+#         ).mean()
+#
+#         df["ema_long"] = df["close"].ewm(
+#             span=long_span,
+#             adjust=False
+#         ).mean()
+#
+#         # -------------------------------------------------
+#         # 4️⃣ EMA difference
+#         # -------------------------------------------------
+#         df["diff"] = df["ema_short"] - df["ema_long"]
+#
+#         # -------------------------------------------------
+#         # 5️⃣ Detect crossover points
+#         # -------------------------------------------------
+#         df["crossover"] = (
+#             ((df["diff"] > 0) & (df["diff"].shift(1) <= 0)) |
+#             ((df["diff"] < 0) & (df["diff"].shift(1) >= 0))
+#         )
+#
+#         # # -------------------------------------------------
+#         # # 6️⃣ Strategy signal
+#         # # -------------------------------------------------
+#         # signal = ema_crossover_signal(df)
+#         # # if signal == "NO SIGNAL" and getattr(settings, "DEMO_MODE", False):
+#         # #     signal = "BUY"
+#
+#         # -------------------------------------------------
+#         # 6️⃣ Strategy signal (STRICT FRESH CROSSOVER)
+#         # -------------------------------------------------
+#
+#         latest_crossover = df["crossover"].iloc[-1]
+#         prev_diff = df["diff"].iloc[-2]
+#         current_diff = df["diff"].iloc[-1]
+#
+#         if latest_crossover:
+#             if current_diff > 0:
+#                 signal = "BUY"
+#             elif current_diff < 0:
+#                 signal = "SELL"
+#             else:
+#                 signal = "NONE"
+#         else:
+#             signal = "NONE"
+#
+#         # -------------------------------------------------
+#         # 7️⃣ Prepare last 50 candles for chart
+#         # -------------------------------------------------
+#         chart_df = df.tail(50).copy().reset_index()
+#         chart_df["timestamp"] = chart_df["timestamp"].astype(str)
+#
+#         candles = chart_df.to_dict(orient="records")
+#
+#         # -------------------------------------------------
+#         # 8️⃣ Return structured result
+#         # -------------------------------------------------
+#         return {
+#             "signal": signal,
+#             "timestamp": str(df.index[-1]),
+#             "last_close": float(df["close"].iloc[-1]),
+#             "ema_short": float(df["ema_short"].iloc[-1]),
+#             "ema_long": float(df["ema_long"].iloc[-1]),
+#             "diff": float(df["diff"].iloc[-1]),
+#             "candles": candles,
+#             "ohlc_count": len(raw_data),
+#             "df_shape": df.shape,
+#             "df_columns": list(df.columns),
+#         }
+#
+#     except Exception as e:
+#         return {"error": str(e)}

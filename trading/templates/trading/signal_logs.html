@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Signal Monitoring | Quant Engine</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Arial;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 30px;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        th {
+            background: #111827;
+        }
+
+        .buy { color: #16a34a; font-weight: bold; }
+        .sell { color: #dc2626; font-weight: bold; }
+        .none { color: #94a3b8; }
+
+        .executed { color: #22c55e; }
+        .pending { color: #f59e0b; }
+
+    </style>
+</head>
+<body>
+
+<h2>📊 Signal Monitoring Panel</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Generated At</th>
+            <th>Symbol</th>
+            <th>Signal</th>
+            <th>Price</th>
+            <th>EMA Short</th>
+            <th>EMA Long</th>
+            <th>Diff</th>
+            <th>Crossover Candle</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in signals %}
+        <tr>
+            <td>{{ s.generated_at }}</td>
+            <td>
+                <strong>{{ s.stock.trading_symbol }}</strong><br>
+                    <small style="opacity:0.7;">
+                        {{ s.stock.symbol_token }}
+                    </small>
+            </td>
+
+            <td class="
+                {% if s.signal == 'BUY' %}buy
+                {% elif s.signal == 'SELL' %}sell
+                {% else %}none
+                {% endif %}
+            ">
+                {{ s.signal }}
+            </td>
+
+            <td>{{ s.price }}</td>
+            <td>{{ s.ema_short|floatformat:2 }}</td>
+            <td>{{ s.ema_long|floatformat:2 }}</td>
+            <td>{{ s.diff|floatformat:2 }}</td>
+            <td>{{ s.crossover_timestamp }}</td>
+
+            <td class="{% if s.executed %}executed{% else %}pending{% endif %}">
+                {% if s.executed %}Executed{% else %}Not Executed{% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="9">No signals logged yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>

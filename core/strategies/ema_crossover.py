@@ -37,9 +37,7 @@ def ema_crossover_signal(df: pd.DataFrame) -> str:
         return "NO SIGNAL"
 
 
-# import pandas as pd
-#
-#
+
 # def ema_crossover_signal(df: pd.DataFrame) -> str:
 #     """
 #     Pure Python EMA crossover strategy.

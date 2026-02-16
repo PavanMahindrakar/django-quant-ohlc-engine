@@ -1,21 +1,17 @@
 # config/trading/models.py
+
 from django.db import models
 from django.utils import timezone
+
 
 class StockConfig(models.Model):
     """
     Stores tradable instrument configuration.
-
-    Important:
-    - symbol_token → used for fetching OHLC from SmartAPI
-    - trading_symbol → used for placing orders
-    - exchange → NSE / BSE etc.
-    - timeframe → Candle interval
     """
 
     symbol_token = models.CharField(
         max_length=20,
-        help_text="SmartAPI symbol token (e.g. 3045 for RELIANCE)"
+        help_text="SmartAPI symbol token (e.g. 2885 for RELIANCE)"
     )
 
     trading_symbol = models.CharField(
@@ -33,34 +29,98 @@ class StockConfig(models.Model):
         help_text="SmartAPI interval (e.g. ONE_MINUTE)"
     )
 
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Enable/Disable this stock for trading"
-    )
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         unique_together = ("symbol_token", "exchange", "timeframe")
 
     def __str__(self):
-        return f"{self.trading_symbol} ({self.symbol_token}) | {self.exchange}"
+        return f"{self.trading_symbol} ({self.exchange})"
 
+
+# ==========================================================
+# STRATEGY CONFIG (Separated Layer)
+# ==========================================================
+
+class StrategyConfig(models.Model):
+    """
+    EMA Strategy parameters per stock.
+    """
+
+    stock = models.OneToOneField(
+        StockConfig,
+        on_delete=models.CASCADE,
+        related_name="strategy"
+    )
+
+    short_span = models.IntegerField(default=9)
+    long_span = models.IntegerField(default=21)
+    candle_count = models.IntegerField(default=100)
+
+    signal_validity_minutes = models.IntegerField(
+        default=5,
+        help_text="Signal must be executed within this many minutes"
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"EMA Strategy → {self.stock.trading_symbol}"
+
+
+# ==========================================================
+# SIGNAL LOG (Institutional Logging)
+# ==========================================================
+
+class SignalLog(models.Model):
+
+    SIGNAL_CHOICES = [
+        ("BUY", "BUY"),
+        ("SELL", "SELL"),
+        ("NO SIGNAL", "NO SIGNAL"),
+    ]
+
+    stock = models.ForeignKey(
+        StockConfig,
+        on_delete=models.CASCADE
+    )
+
+    signal = models.CharField(max_length=15, choices=SIGNAL_CHOICES)
+
+    crossover_timestamp = models.DateTimeField()
+    generated_at = models.DateTimeField(default=timezone.now)
+
+    price = models.FloatField()
+
+    ema_short = models.FloatField()
+    ema_long = models.FloatField()
+    diff = models.FloatField()
+
+    executed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-generated_at"]
+
+    def __str__(self):
+        return f"{self.stock.trading_symbol} | {self.signal} | {self.generated_at}"
+
+
+# ==========================================================
+# TRADE STATE
+# ==========================================================
 
 class TradeState(models.Model):
-    """
-    Tracks current trading position per symbol.
-
-    Used for:
-    - Preventing duplicate orders
-    - Tracking open positions
-    - Safe execution control
-    """
 
     POSITION_CHOICES = [
         ("NONE", "None"),
         ("LONG", "Long"),
     ]
 
-    symbol = models.CharField(max_length=20, unique=True)
+    symbol = models.CharField(max_length=50, unique=True)
 
     position = models.CharField(
         max_length=10,

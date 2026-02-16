@@ -135,23 +135,18 @@ class OrderService:
     # ==========================================================
 
     def place_order(
-        self,
-        symbol_token: str,
-        trading_symbol: str,
-        exchange: str,
-        signal: str,
-        quantity: int = 1,
-        last_price: float = None,
+            self,
+            symbol_token: str,
+            trading_symbol: str,
+            exchange: str,
+            signal: str,
+            quantity: int = 1,
+            last_price: float = None,
     ) -> dict:
         """
-        Safely execute trade based on signal.
-
-        Strategy Model (Long-only)
-        ---------------------------
-        BUY  → Open LONG
-        SELL → Close LONG
-
-        Returns structured execution response.
+        Broker-level execution.
+        No internal margin blocking.
+        Broker (RMS) decides rejection.
         """
 
         if signal not in ["BUY", "SELL"]:
@@ -160,7 +155,7 @@ class OrderService:
         if quantity <= 0:
             return {"status": "BLOCKED", "reason": "Invalid quantity"}
 
-        # 1️⃣ Sync position
+        # 1️⃣ Sync position first
         self._sync_position(trading_symbol)
 
         trade_state, _ = TradeState.objects.get_or_create(
@@ -169,21 +164,12 @@ class OrderService:
 
         current_position = trade_state.position
 
-        # Duplicate prevention
+        # Duplicate protection (still keep logical safety)
         if signal == "BUY" and current_position == "LONG":
             return {"status": "BLOCKED", "reason": "Already LONG"}
 
         if signal == "SELL" and current_position == "NONE":
             return {"status": "BLOCKED", "reason": "No position to close"}
-
-        # 2️⃣ Margin validation
-        if signal == "BUY" and last_price:
-            required_amount = last_price * quantity
-            if not self._check_margin(required_amount):
-                return {
-                    "status": "BLOCKED",
-                    "reason": "Insufficient margin",
-                }
 
         # Build broker payload
         orderparams = {
@@ -211,30 +197,45 @@ class OrderService:
 
         # ================= LIVE EXECUTION =================
 
-        # Global Kill Switch
         if not getattr(settings, "LIVE_TRADING_ENABLED", False):
+            print("❌ Live trading disabled in settings")
             return {
                 "status": "DISABLED",
                 "reason": "Live trading disabled in settings",
             }
 
-        # Live execution warning log
-        logger.warning(
-            f"🚨 LIVE ORDER ATTEMPT: {signal} {trading_symbol} Qty={quantity}"
-        )
+        print(f"\n🚨 LIVE ORDER ATTEMPT")
+        print(f"Symbol: {trading_symbol}")
+        print(f"Signal: {signal}")
+        print(f"Quantity: {quantity}")
+        print(f"Exchange: {exchange}")
 
         try:
             response = self.service.smart.placeOrder(orderparams)
 
-            # Broker response validation
-            if not response.get("status"):
+            print("\n📨 Broker Raw Response:")
+            print(response)
+
+            # If broker returns string directly
+            if isinstance(response, str):
+                order_id = response
+
+            # If broker returns dict
+            elif isinstance(response, dict):
+                if not response.get("status"):
+                    return {
+                        "status": "FAILED",
+                        "error": response.get("message"),
+                        "raw": response,
+                    }
+                order_id = response.get("data")
+
+            else:
                 return {
                     "status": "FAILED",
-                    "error": response.get("message"),
+                    "error": "Unexpected broker response type",
                     "raw": response,
                 }
-
-            order_id = response.get("data")
 
             if not order_id:
                 return {
@@ -243,7 +244,9 @@ class OrderService:
                     "raw": response,
                 }
 
-            # Update DB only after confirmed execution
+            print(f"\n✅ Order ID Received: {order_id}")
+
+            # Update DB
             new_position = "LONG" if signal == "BUY" else "NONE"
 
             trade_state.position = new_position
@@ -251,17 +254,19 @@ class OrderService:
             trade_state.updated_at = timezone.now()
             trade_state.save()
 
+            print(f"💾 DB Updated → New Position: {new_position}")
+
             return {
-                "status": "EXECUTED",
+                "status": "ORDER_SENT",
                 "order_id": order_id,
                 "symbol": trading_symbol,
                 "new_position": new_position,
-                "broker_response": response,
                 "payload_sent": orderparams,
             }
 
         except Exception as e:
-            logger.error(f"Live order failed: {str(e)}")
+            print("🔥 Live order execution failed:")
+            print(str(e))
             return {
                 "status": "ERROR",
                 "error": str(e),

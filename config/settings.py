@@ -126,7 +126,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Kolkata'
 
 USE_I18N = True
 
@@ -146,3 +146,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # print("Trading API Key Loaded:", TRADING_API_KEY)
 LIVE_TRADING_ENABLED = True
 DEFAULT_ORDER_QUANTITY = 1
+# DEMO_MODE = True
