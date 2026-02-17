@@ -128,8 +128,8 @@ def engine_run_api(request):
         "diff": signal_data.get("diff"),
     }
 
-    # 🔹 OHLC PREVIEW (ONLY LAST 5)
-    preview_count = 1
+    # 🔹 OHLC PREVIEW
+    preview_count = 50
     ohlc_preview = candles[-preview_count:] if candles else []
 
     # 🔹 DF DEBUG BLOCK

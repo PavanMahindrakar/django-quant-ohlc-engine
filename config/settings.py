@@ -147,3 +147,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LIVE_TRADING_ENABLED = True
 DEFAULT_ORDER_QUANTITY = 1
 # DEMO_MODE = True
+FORCE_SIGNAL = None   # Options: None / "BUY" / "SELL"

@@ -23,6 +23,7 @@ Important:
 """
 
 from trading.services.data_transformer import ohlc_to_dataframe
+from django.conf import settings
 
 
 def run_ema_pipeline(
@@ -109,8 +110,8 @@ def run_ema_pipeline(
         # -------------------------------------------------
         # 6️⃣ Strict Fresh Crossover Signal Logic
         # -------------------------------------------------
-        latest_crossover = df["crossover"].iloc[-1]
-        current_diff = df["diff"].iloc[-1]
+        latest_crossover = df["crossover"].iloc[-2]
+        current_diff = df["diff"].iloc[-2]
 
         if latest_crossover:
             if current_diff > 0:
@@ -123,6 +124,15 @@ def run_ema_pipeline(
             signal = "NONE"
 
         # -------------------------------------------------
+        # Optional Force Signal (Testing Only)
+        # -------------------------------------------------
+        forced = getattr(settings, "FORCE_SIGNAL", None)
+
+        if forced in ["BUY", "SELL"]:
+            print(f"\n⚠️ FORCE SIGNAL ENABLED → {forced}")
+            signal = forced
+
+        # -------------------------------------------------
         # 7️⃣ Prepare Last 50 Candles for UI / Debug
         # -------------------------------------------------
         chart_df = df.tail(50).copy().reset_index()
@@ -132,19 +142,20 @@ def run_ema_pipeline(
         # -------------------------------------------------
         # 8️⃣ Return Structured Output
         # -------------------------------------------------
+        signal_index = -2  # use last fully closed candle
+
         return {
             "signal": signal,
-            "timestamp": str(df.index[-1]),
-            "last_close": float(df["close"].iloc[-1]),
-            "ema_short": float(df["ema_short"].iloc[-1]),
-            "ema_long": float(df["ema_long"].iloc[-1]),
-            "diff": float(current_diff),
+            "timestamp": str(df.index[signal_index]),
+            "last_close": float(df["close"].iloc[signal_index]),
+            "ema_short": float(df["ema_short"].iloc[signal_index]),
+            "ema_long": float(df["ema_long"].iloc[signal_index]),
+            "diff": float(df["diff"].iloc[signal_index]),
             "candles": candles,
             "ohlc_count": len(raw_data),
             "df_shape": df.shape,
             "df_columns": list(df.columns),
         }
-
     except Exception as e:
         return {"error": str(e)}
 
