@@ -52,9 +52,17 @@ class TradingEngine:
 
         signal = signal_data.get("signal")
         last_price = signal_data.get("last_close")
-        candle_timestamp = signal_data.get("timestamp")
 
-        candle_dt = parse_datetime(candle_timestamp)
+        # Use actual last crossover timestamp
+        crossover_timestamp = signal_data.get("crossover_timestamp")
+
+        candle_dt = parse_datetime(crossover_timestamp) if crossover_timestamp else None
+
+        # signal = signal_data.get("signal")
+        # last_price = signal_data.get("last_close")
+        # candle_timestamp = signal_data.get("timestamp")
+        #
+        # candle_dt = parse_datetime(candle_timestamp)
 
         # -------------------------------------------------
         # 3️⃣ Log Signal

@@ -129,7 +129,7 @@ def engine_run_api(request):
     }
 
     # 🔹 OHLC PREVIEW
-    preview_count = 50
+    preview_count = len(candles)
     ohlc_preview = candles[-preview_count:] if candles else []
 
     # 🔹 DF DEBUG BLOCK
@@ -178,16 +178,77 @@ def engine_run_api(request):
 # ==========================================================
 # SIGNAL HISTORY PAGE
 # ==========================================================
+from django.utils.dateparse import parse_date
 
 def signal_history_page(request):
+    """
+    Institutional Signal Monitoring Page with filters.
 
-    signals = (
-        SignalLog.objects
-        .select_related("stock")
-        .all()
-        .order_by("-generated_at")[:100]
-    )
+    Filters:
+    - Stock
+    - Signal type
+    - Execution status
+    - Date range
+    """
+
+    signals = SignalLog.objects.select_related("stock").all()
+
+    # ------------------------------
+    # Filters
+    # ------------------------------
+
+    stock_id = request.GET.get("stock")
+    signal_type = request.GET.get("signal")
+    executed = request.GET.get("executed")
+    from_date = request.GET.get("from")
+    to_date = request.GET.get("to")
+
+    if stock_id:
+        signals = signals.filter(stock_id=stock_id)
+
+    if signal_type:
+        signals = signals.filter(signal=signal_type)
+
+    if executed == "true":
+        signals = signals.filter(executed=True)
+    elif executed == "false":
+        signals = signals.filter(executed=False)
+
+    if from_date:
+        parsed_from = parse_date(from_date)
+        if parsed_from:
+            signals = signals.filter(generated_at__date__gte=parsed_from)
+
+    if to_date:
+        parsed_to = parse_date(to_date)
+        if parsed_to:
+            signals = signals.filter(generated_at__date__lte=parsed_to)
+
+    signals = signals.order_by("-generated_at")[:200]
+
+    stocks = StockConfig.objects.all()
 
     return render(request, "trading/signal_logs.html", {
-        "signals": signals
+        "signals": signals,
+        "stocks": stocks,
+        "filters": {
+            "stock": stock_id,
+            "signal": signal_type,
+            "executed": executed,
+            "from": from_date,
+            "to": to_date,
+        }
     })
+
+# def signal_history_page(request):
+#
+#     signals = (
+#         SignalLog.objects
+#         .select_related("stock")
+#         .all()
+#         .order_by("-generated_at")[:100]
+#     )
+#
+#     return render(request, "trading/signal_logs.html", {
+#         "signals": signals
+#     })

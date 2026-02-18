@@ -107,16 +107,53 @@ def run_ema_pipeline(
             ((df["diff"] < 0) & (df["diff"].shift(1) >= 0))
         )
 
+        # # DEBUG: Check last 10 candles crossover behavior
+        # print("Latest closed candle:")
+        # print("Timestamp:", df.index[-2])
+        # print("Diff:", df["diff"].iloc[-2])
+        # print("Crossover:", df["crossover"].iloc[-2])
         # -------------------------------------------------
-        # 6️⃣ Strict Fresh Crossover Signal Logic
-        # -------------------------------------------------
-        latest_crossover = df["crossover"].iloc[-2]
-        current_diff = df["diff"].iloc[-2]
+        # # 6️⃣ Strict Fresh Crossover Signal Logic
+        # # -------------------------------------------------
+        # latest_crossover = df["crossover"].iloc[-1]
+        # current_diff = df["diff"].iloc[-1]
+        #
+        # if latest_crossover:
+        #     if current_diff > 0:
+        #         signal = "BUY"
+        #     elif current_diff < 0:
+        #         signal = "SELL"
+        #     else:
+        #         signal = "NONE"
+        # else:
+        #     signal = "NONE"
 
-        if latest_crossover:
-            if current_diff > 0:
+        # -------------------------------------------------
+        # 6️⃣ Detect Latest Crossover In Entire Dataset
+        # -------------------------------------------------
+
+        crossover_rows = df[df["crossover"] == True]
+
+        if not crossover_rows.empty:
+            last_crossover_index = crossover_rows.index[-1]
+            last_crossover_diff = df.loc[last_crossover_index, "diff"]
+        else:
+            last_crossover_index = None
+            last_crossover_diff = None
+
+        # -------------------------------------------------
+        # 7️⃣ Strict Fresh Signal Logic (Trade only if latest candle crossed)
+        # -------------------------------------------------
+
+        signal_index = -1  # last fully closed candle
+
+        if (
+                last_crossover_index is not None and
+                last_crossover_index == df.index[signal_index]
+        ):
+            if last_crossover_diff > 0:
                 signal = "BUY"
-            elif current_diff < 0:
+            elif last_crossover_diff < 0:
                 signal = "SELL"
             else:
                 signal = "NONE"
@@ -135,18 +172,18 @@ def run_ema_pipeline(
         # -------------------------------------------------
         # 7️⃣ Prepare Last 50 Candles for UI / Debug
         # -------------------------------------------------
-        chart_df = df.tail(50).copy().reset_index()
+        chart_df = df.copy().reset_index()
         chart_df["timestamp"] = chart_df["timestamp"].astype(str)
         candles = chart_df.to_dict(orient="records")
 
         # -------------------------------------------------
         # 8️⃣ Return Structured Output
         # -------------------------------------------------
-        signal_index = -2  # use last fully closed candle
 
         return {
             "signal": signal,
             "timestamp": str(df.index[signal_index]),
+            "crossover_timestamp": str(last_crossover_index) if last_crossover_index else None,
             "last_close": float(df["close"].iloc[signal_index]),
             "ema_short": float(df["ema_short"].iloc[signal_index]),
             "ema_long": float(df["ema_long"].iloc[signal_index]),
@@ -156,6 +193,21 @@ def run_ema_pipeline(
             "df_shape": df.shape,
             "df_columns": list(df.columns),
         }
+
+        # signal_index = -1  # use last fully closed candle
+        #
+        # return {
+        #     "signal": signal,
+        #     "timestamp": str(df.index[signal_index]),
+        #     "last_close": float(df["close"].iloc[signal_index]),
+        #     "ema_short": float(df["ema_short"].iloc[signal_index]),
+        #     "ema_long": float(df["ema_long"].iloc[signal_index]),
+        #     "diff": float(df["diff"].iloc[signal_index]),
+        #     "candles": candles,
+        #     "ohlc_count": len(raw_data),
+        #     "df_shape": df.shape,
+        #     "df_columns": list(df.columns),
+        # }
     except Exception as e:
         return {"error": str(e)}
 

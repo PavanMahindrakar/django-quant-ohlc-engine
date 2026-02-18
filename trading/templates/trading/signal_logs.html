@@ -14,6 +14,30 @@
             margin-bottom: 20px;
         }
 
+        .filter-box {
+            background: #1e293b;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .filter-box input,
+        .filter-box select {
+            padding: 6px;
+            margin-right: 10px;
+            background: #0f172a;
+            color: white;
+            border: 1px solid #334155;
+        }
+
+        .filter-box button {
+            padding: 6px 12px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -42,8 +66,46 @@
 </head>
 <body>
 
-<h2>📊 Signal Monitoring Panel</h2>
+<h2>📊 Institutional Signal Monitoring Panel</h2>
 
+<!-- FILTER PANEL -->
+<div class="filter-box">
+    <form method="get">
+
+        <select name="stock">
+            <option value="">All Stocks</option>
+            {% for stock in stocks %}
+                <option value="{{ stock.id }}"
+                    {% if filters.stock == stock.id|stringformat:"s" %}selected{% endif %}>
+                    {{ stock.trading_symbol }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="signal">
+            <option value="">All Signals</option>
+            <option value="BUY" {% if filters.signal == "BUY" %}selected{% endif %}>BUY</option>
+            <option value="SELL" {% if filters.signal == "SELL" %}selected{% endif %}>SELL</option>
+            <option value="NO SIGNAL" {% if filters.signal == "NO SIGNAL" %}selected{% endif %}>NO SIGNAL</option>
+        </select>
+
+        <select name="executed">
+            <option value="">All Status</option>
+            <option value="true" {% if filters.executed == "true" %}selected{% endif %}>Executed</option>
+            <option value="false" {% if filters.executed == "false" %}selected{% endif %}>Not Executed</option>
+        </select>
+
+        From:
+        <input type="date" name="from" value="{{ filters.from }}">
+
+        To:
+        <input type="date" name="to" value="{{ filters.to }}">
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<!-- TABLE -->
 <table>
     <thead>
         <tr>
@@ -62,11 +124,12 @@
         {% for s in signals %}
         <tr>
             <td>{{ s.generated_at }}</td>
+
             <td>
                 <strong>{{ s.stock.trading_symbol }}</strong><br>
-                    <small style="opacity:0.7;">
-                        {{ s.stock.symbol_token }}
-                    </small>
+                <small style="opacity:0.7;">
+                    {{ s.stock.symbol_token }}
+                </small>
             </td>
 
             <td class="
@@ -90,11 +153,112 @@
         </tr>
         {% empty %}
         <tr>
-            <td colspan="9">No signals logged yet.</td>
+            <td colspan="9">No signals found for selected filters.</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
-
 </body>
 </html>
+
+
+{#<!DOCTYPE html>#}
+{#<html>#}
+{#<head>#}
+{#    <title>Signal Monitoring | Quant Engine</title>#}
+{#    <style>#}
+{#        body {#}
+{#            font-family: "Segoe UI", Arial;#}
+{#            background: #0f172a;#}
+{#            color: #e2e8f0;#}
+{#            padding: 30px;#}
+{#        }#}
+{##}
+{#        h2 {#}
+{#            margin-bottom: 20px;#}
+{#        }#}
+{##}
+{#        table {#}
+{#            width: 100%;#}
+{#            border-collapse: collapse;#}
+{#            background: #1e293b;#}
+{#        }#}
+{##}
+{#        th, td {#}
+{#            padding: 10px;#}
+{#            border-bottom: 1px solid #334155;#}
+{#            text-align: center;#}
+{#            font-size: 13px;#}
+{#        }#}
+{##}
+{#        th {#}
+{#            background: #111827;#}
+{#        }#}
+{##}
+{#        .buy { color: #16a34a; font-weight: bold; }#}
+{#        .sell { color: #dc2626; font-weight: bold; }#}
+{#        .none { color: #94a3b8; }#}
+{##}
+{#        .executed { color: #22c55e; }#}
+{#        .pending { color: #f59e0b; }#}
+{##}
+{#    </style>#}
+{#</head>#}
+{#<body>#}
+{##}
+{#<h2>📊 Signal Monitoring Panel</h2>#}
+{##}
+{#<table>#}
+{#    <thead>#}
+{#        <tr>#}
+{#            <th>Generated At</th>#}
+{#            <th>Symbol</th>#}
+{#            <th>Signal</th>#}
+{#            <th>Price</th>#}
+{#            <th>EMA Short</th>#}
+{#            <th>EMA Long</th>#}
+{#            <th>Diff</th>#}
+{#            <th>Crossover Candle</th>#}
+{#            <th>Status</th>#}
+{#        </tr>#}
+{#    </thead>#}
+{#    <tbody>#}
+{#        {% for s in signals %}#}
+{#        <tr>#}
+{#            <td>{{ s.generated_at }}</td>#}
+{#            <td>#}
+{#                <strong>{{ s.stock.trading_symbol }}</strong><br>#}
+{#                    <small style="opacity:0.7;">#}
+{#                        {{ s.stock.symbol_token }}#}
+{#                    </small>#}
+{#            </td>#}
+{##}
+{#            <td class="#}
+{#                {% if s.signal == 'BUY' %}buy#}
+{#                {% elif s.signal == 'SELL' %}sell#}
+{#                {% else %}none#}
+{#                {% endif %}#}
+{#            ">#}
+{#                {{ s.signal }}#}
+{#            </td>#}
+{##}
+{#            <td>{{ s.price }}</td>#}
+{#            <td>{{ s.ema_short|floatformat:2 }}</td>#}
+{#            <td>{{ s.ema_long|floatformat:2 }}</td>#}
+{#            <td>{{ s.diff|floatformat:2 }}</td>#}
+{#            <td>{{ s.crossover_timestamp }}</td>#}
+{##}
+{#            <td class="{% if s.executed %}executed{% else %}pending{% endif %}">#}
+{#                {% if s.executed %}Executed{% else %}Not Executed{% endif %}#}
+{#            </td>#}
+{#        </tr>#}
+{#        {% empty %}#}
+{#        <tr>#}
+{#            <td colspan="9">No signals logged yet.</td>#}
+{#        </tr>#}
+{#        {% endfor %}#}
+{#    </tbody>#}
+{#</table>#}
+{##}
+{#</body>#}
+{#</html>#}
