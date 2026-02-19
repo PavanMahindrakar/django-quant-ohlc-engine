@@ -108,6 +108,34 @@ class SignalLog(models.Model):
     def __str__(self):
         return f"{self.stock.trading_symbol} | {self.signal} | {self.generated_at}"
 
+# ==========================================================
+# ORDER LOG (Execution Layer)
+# ==========================================================
+
+class OrderLog(models.Model):
+    """
+    Stores broker execution details.
+    Linked to SignalLog.
+    """
+
+    signal = models.ForeignKey(
+        SignalLog,
+        on_delete=models.CASCADE,
+        related_name="orders"
+    )
+
+    order_id = models.CharField(max_length=100, null=True, blank=True)
+    broker_status = models.CharField(max_length=50, null=True, blank=True)
+
+    quantity = models.IntegerField()
+    order_type = models.CharField(max_length=20, default="MARKET")
+
+    broker_response = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.signal.stock.trading_symbol} | {self.order_id}"
 
 # ==========================================================
 # TRADE STATE

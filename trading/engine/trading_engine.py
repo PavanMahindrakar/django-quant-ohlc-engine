@@ -7,7 +7,7 @@ from datetime import timedelta
 from trading.engine.ema_pipeline import run_ema_pipeline
 from trading.services.order_service import OrderService
 from trading.models import SignalLog, StrategyConfig
-
+from trading.models import OrderLog
 
 class TradingEngine:
 
@@ -123,14 +123,50 @@ class TradingEngine:
         )
 
         # -------------------------------------------------
-        # 7️⃣ Mark Executed
+        # 7️⃣ Store Order Log (ALWAYS log response)
         # -------------------------------------------------
-        if order_result.get("status") in ["EXECUTED", "ORDER_SENT"]:
+        order_id = order_result.get("order_id")
+        broker_status = order_result.get("status")
+
+        OrderLog.objects.create(
+            signal=signal_log,  # 🔥 linking to SignalLog
+            order_id=order_id,
+            broker_status=broker_status,
+            quantity=quantity,
+            order_type="MARKET",
+            broker_response=order_result,
+        )
+
+        # -------------------------------------------------
+        # 8️⃣ Mark Signal Executed (Only if successful)
+        # -------------------------------------------------
+        if broker_status in ["EXECUTED", "ORDER_SENT"]:
             signal_log.executed = True
             signal_log.save()
             print("✅ Signal marked as executed")
 
-        return {
-            "signal_data": signal_data,
-            "order_result": order_result,
-        }
+
+        # # -------------------------------------------------
+        # # 6️⃣ Execute Order
+        # # -------------------------------------------------
+        # order_result = self.order_service.place_order(
+        #     symbol_token=stock.symbol_token,
+        #     trading_symbol=stock.trading_symbol,
+        #     exchange=stock.exchange,
+        #     signal=signal,
+        #     quantity=quantity,
+        #     last_price=last_price,
+        # )
+        #
+        # # -------------------------------------------------
+        # # 7️⃣ Mark Executed
+        # # -------------------------------------------------
+        # if order_result.get("status") in ["EXECUTED", "ORDER_SENT"]:
+        #     signal_log.executed = True
+        #     signal_log.save()
+        #     print("✅ Signal marked as executed")
+        #
+        # return {
+        #     "signal_data": signal_data,
+        #     "order_result": order_result,
+        # }
