@@ -64,10 +64,11 @@ def run_ema_pipeline(
         # -------------------------------------------------
         # 1️⃣ Fetch OHLC Data
         # -------------------------------------------------
+        buffer_size = max(candle_count,300)
         raw_data = service.fetch_recent_candles(
             symbol_token=symbol_token,
             interval=interval,
-            n=candle_count,
+            n=buffer_size,
         )
 
         if not raw_data:
@@ -107,11 +108,8 @@ def run_ema_pipeline(
             ((df["diff"] < 0) & (df["diff"].shift(1) >= 0))
         )
 
-        # # DEBUG: Check last 10 candles crossover behavior
-        # print("Latest closed candle:")
-        # print("Timestamp:", df.index[-2])
-        # print("Diff:", df["diff"].iloc[-2])
-        # print("Crossover:", df["crossover"].iloc[-2])
+        df = df.tail(candle_count).copy()
+
         # -------------------------------------------------
         # # 6️⃣ Strict Fresh Crossover Signal Logic
         # # -------------------------------------------------

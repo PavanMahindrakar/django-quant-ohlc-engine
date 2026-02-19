@@ -25,4 +25,5 @@ urlpatterns = [
     # Signal Monitoring
     # -------------------------------
     path("signals/logs/", views.signal_history_page, name="signal_logs"),
+    path("orders/logs/", views.order_history_page, name="order_logs"),
 ]

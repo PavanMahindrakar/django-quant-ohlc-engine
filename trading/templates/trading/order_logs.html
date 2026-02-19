@@ -1,0 +1,32 @@
+<h2>📦 Order Monitoring Panel</h2>
+
+<table>
+<thead>
+<tr>
+    <th>Created</th>
+    <th>Symbol</th>
+    <th>Signal</th>
+    <th>Order ID</th>
+    <th>Status</th>
+    <th>Qty</th>
+    <th>Signal Time</th>
+</tr>
+</thead>
+<tbody>
+{% for o in orders %}
+<tr>
+    <td>{{ o.created_at }}</td>
+    <td>{{ o.signal.stock.trading_symbol }}</td>
+    <td>{{ o.signal.signal }}</td>
+    <td>{{ o.order_id }}</td>
+    <td>{{ o.broker_status }}</td>
+    <td>{{ o.quantity }}</td>
+    <td>{{ o.signal.generated_at }}</td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="7">No orders yet.</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>

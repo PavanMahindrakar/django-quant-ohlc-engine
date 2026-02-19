@@ -240,6 +240,19 @@ def signal_history_page(request):
         }
     })
 
+from trading.models import OrderLog
+
+def order_history_page(request):
+    orders = (
+        OrderLog.objects
+        .select_related("signal", "signal__stock")
+        .all()
+        .order_by("-created_at")[:100]
+    )
+
+    return render(request, "trading/order_logs.html", {
+        "orders": orders
+    })
 # def signal_history_page(request):
 #
 #     signals = (
