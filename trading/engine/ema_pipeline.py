@@ -191,21 +191,6 @@ def run_ema_pipeline(
             "df_shape": df.shape,
             "df_columns": list(df.columns),
         }
-
-        # signal_index = -1  # use last fully closed candle
-        #
-        # return {
-        #     "signal": signal,
-        #     "timestamp": str(df.index[signal_index]),
-        #     "last_close": float(df["close"].iloc[signal_index]),
-        #     "ema_short": float(df["ema_short"].iloc[signal_index]),
-        #     "ema_long": float(df["ema_long"].iloc[signal_index]),
-        #     "diff": float(df["diff"].iloc[signal_index]),
-        #     "candles": candles,
-        #     "ohlc_count": len(raw_data),
-        #     "df_shape": df.shape,
-        #     "df_columns": list(df.columns),
-        # }
     except Exception as e:
         return {"error": str(e)}
 

@@ -1,3 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Order Monitoring | Quant Engine</title>
+
+    <style>
+        body {
+            font-family: "Segoe UI", Arial;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 30px;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        th {
+            background: #111827;
+        }
+
+        td {
+            vertical-align: top;
+        }
+
+        /* Execution State Colors */
+        .executed {
+            color: #22c55e;
+            font-weight: bold;
+        }
+
+        .rejected {
+            color: #ef4444;
+            font-weight: bold;
+        }
+
+        .attempted {
+            color: #f59e0b;
+            font-weight: bold;
+        }
+
+        .skipped {
+            color: #94a3b8;
+            font-weight: bold;
+        }
+
+        .failed {
+            color: #dc2626;
+            font-weight: bold;
+        }
+
+        details summary {
+            cursor: pointer;
+            color: #38bdf8;
+        }
+
+        pre {
+            text-align: left;
+            font-size: 12px;
+            white-space: pre-wrap;
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
 <h2>📦 Order Monitoring Panel</h2>
 
 <table>
@@ -6,27 +89,79 @@
     <th>Created</th>
     <th>Symbol</th>
     <th>Signal</th>
+    <th>Execution Status</th>
     <th>Order ID</th>
-    <th>Status</th>
+    <th>Broker Status</th>
+    <th>Exchange ID</th>
     <th>Qty</th>
+    <th>Rejection Reason</th>
     <th>Signal Time</th>
+    <th>Details</th>
 </tr>
 </thead>
+
 <tbody>
 {% for o in orders %}
 <tr>
+
     <td>{{ o.created_at }}</td>
-    <td>{{ o.signal.stock.trading_symbol }}</td>
+
+    <td>
+        <strong>{{ o.signal.stock.trading_symbol }}</strong>
+    </td>
+
     <td>{{ o.signal.signal }}</td>
-    <td>{{ o.order_id }}</td>
-    <td>{{ o.broker_status }}</td>
+
+    <!-- Execution Status (Strategy Level) -->
+    <td class="
+        {% if o.signal.execution_status == 'EXECUTED' %}
+            executed
+        {% elif o.signal.execution_status == 'REJECTED' %}
+            rejected
+        {% elif o.signal.execution_status == 'ATTEMPTED' %}
+            attempted
+        {% elif o.signal.execution_status == 'FAILED' %}
+            failed
+        {% else %}
+            skipped
+        {% endif %}
+    ">
+        {{ o.signal.execution_status }}
+    </td>
+
+    <!-- Broker Level -->
+    <td>{{ o.order_id|default:"—" }}</td>
+
+    <td>{{ o.broker_status|default:"—" }}</td>
+
+    <td>
+        {{ o.broker_response.exchangeorderid|default:"—" }}
+    </td>
+
     <td>{{ o.quantity }}</td>
+
+    <td style="max-width:350px; text-align:left;">
+        {{ o.broker_response.text|default:"—" }}
+    </td>
+
     <td>{{ o.signal.generated_at }}</td>
+
+    <td>
+        <details>
+            <summary>View</summary>
+            <pre>{{ o.broker_response|safe }}</pre>
+        </details>
+    </td>
+
 </tr>
+
 {% empty %}
 <tr>
-    <td colspan="7">No orders yet.</td>
+    <td colspan="11">No orders yet.</td>
 </tr>
 {% endfor %}
 </tbody>
 </table>
+
+</body>
+</html>

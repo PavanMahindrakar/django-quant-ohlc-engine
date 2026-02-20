@@ -76,12 +76,52 @@ class StrategyConfig(models.Model):
 # SIGNAL LOG (Institutional Logging)
 # ==========================================================
 
+# class SignalLog(models.Model):
+#
+#     SIGNAL_CHOICES = [
+#         ("BUY", "BUY"),
+#         ("SELL", "SELL"),
+#         ("NO SIGNAL", "NO SIGNAL"),
+#     ]
+#
+#     stock = models.ForeignKey(
+#         StockConfig,
+#         on_delete=models.CASCADE
+#     )
+#
+#     signal = models.CharField(max_length=15, choices=SIGNAL_CHOICES)
+#
+#     crossover_timestamp = models.DateTimeField()
+#     generated_at = models.DateTimeField(default=timezone.now)
+#
+#     price = models.FloatField()
+#
+#     ema_short = models.FloatField()
+#     ema_long = models.FloatField()
+#     diff = models.FloatField()
+#
+#     executed = models.BooleanField(default=False)
+#
+#     class Meta:
+#         ordering = ["-generated_at"]
+#
+#     def __str__(self):
+#         return f"{self.stock.trading_symbol} | {self.signal} | {self.generated_at}"
 class SignalLog(models.Model):
 
     SIGNAL_CHOICES = [
         ("BUY", "BUY"),
         ("SELL", "SELL"),
         ("NO SIGNAL", "NO SIGNAL"),
+    ]
+
+    EXECUTION_STATES = [
+        ("PENDING", "Pending"),
+        ("SKIPPED", "Skipped"),
+        ("ATTEMPTED", "Attempted"),
+        ("EXECUTED", "Executed"),
+        ("REJECTED", "Rejected"),
+        ("FAILED", "Failed"),
     ]
 
     stock = models.ForeignKey(
@@ -95,19 +135,21 @@ class SignalLog(models.Model):
     generated_at = models.DateTimeField(default=timezone.now)
 
     price = models.FloatField()
-
     ema_short = models.FloatField()
     ema_long = models.FloatField()
     diff = models.FloatField()
 
-    executed = models.BooleanField(default=False)
+    execution_status = models.CharField(
+        max_length=20,
+        choices=EXECUTION_STATES,
+        default="PENDING"
+    )
 
     class Meta:
         ordering = ["-generated_at"]
 
     def __str__(self):
-        return f"{self.stock.trading_symbol} | {self.signal} | {self.generated_at}"
-
+        return f"{self.stock.trading_symbol} | {self.signal} | {self.execution_status}"
 # ==========================================================
 # ORDER LOG (Execution Layer)
 # ==========================================================

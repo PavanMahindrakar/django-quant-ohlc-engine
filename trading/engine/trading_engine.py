@@ -6,8 +6,8 @@ from datetime import timedelta
 
 from trading.engine.ema_pipeline import run_ema_pipeline
 from trading.services.order_service import OrderService
-from trading.models import SignalLog, StrategyConfig
-from trading.models import OrderLog
+from trading.models import SignalLog, StrategyConfig, OrderLog
+
 
 class TradingEngine:
 
@@ -15,11 +15,7 @@ class TradingEngine:
         self.service = service
         self.order_service = OrderService(service=service, dry_run=dry_run)
 
-    def run(
-        self,
-        stock,
-        quantity: int = 1,
-    ) -> dict:
+    def run(self, stock, quantity: int = 1) -> dict:
 
         # -------------------------------------------------
         # 1️⃣ Load Strategy Config
@@ -33,7 +29,7 @@ class TradingEngine:
             }
 
         # -------------------------------------------------
-        # 2️⃣ Run EMA Pipeline (Dynamic Config)
+        # 2️⃣ Run EMA Pipeline
         # -------------------------------------------------
         signal_data = run_ema_pipeline(
             service=self.service,
@@ -52,20 +48,12 @@ class TradingEngine:
 
         signal = signal_data.get("signal")
         last_price = signal_data.get("last_close")
-
-        # Use actual last crossover timestamp
         crossover_timestamp = signal_data.get("crossover_timestamp")
 
         candle_dt = parse_datetime(crossover_timestamp) if crossover_timestamp else None
 
-        # signal = signal_data.get("signal")
-        # last_price = signal_data.get("last_close")
-        # candle_timestamp = signal_data.get("timestamp")
-        #
-        # candle_dt = parse_datetime(candle_timestamp)
-
         # -------------------------------------------------
-        # 3️⃣ Log Signal
+        # 3️⃣ Log Signal (Initial State)
         # -------------------------------------------------
         signal_log = SignalLog.objects.create(
             stock=stock,
@@ -75,7 +63,7 @@ class TradingEngine:
             ema_long=signal_data.get("ema_long"),
             diff=signal_data.get("diff"),
             crossover_timestamp=candle_dt,
-            executed=False,
+            execution_status="PENDING",
             generated_at=timezone.now()
         )
 
@@ -85,6 +73,9 @@ class TradingEngine:
         # 4️⃣ Skip if No Signal
         # -------------------------------------------------
         if signal not in ["BUY", "SELL"]:
+            signal_log.execution_status = "SKIPPED"
+            signal_log.save()
+
             return {
                 "signal_data": signal_data,
                 "order_result": {
@@ -94,14 +85,17 @@ class TradingEngine:
             }
 
         # -------------------------------------------------
-        # 5️⃣ Freshness Check (Dynamic)
+        # 5️⃣ Freshness Check
         # -------------------------------------------------
         now = timezone.now()
         freshness_limit = now - timedelta(
             minutes=strategy.signal_validity_minutes
         )
 
-        if candle_dt < freshness_limit:
+        if candle_dt and candle_dt < freshness_limit:
+            signal_log.execution_status = "SKIPPED"
+            signal_log.save()
+
             return {
                 "signal_data": signal_data,
                 "order_result": {
@@ -111,8 +105,11 @@ class TradingEngine:
             }
 
         # -------------------------------------------------
-        # 6️⃣ Execute Order
+        # 6️⃣ Attempt Order
         # -------------------------------------------------
+        signal_log.execution_status = "ATTEMPTED"
+        signal_log.save()
+
         order_result = self.order_service.place_order(
             symbol_token=stock.symbol_token,
             trading_symbol=stock.trading_symbol,
@@ -123,13 +120,13 @@ class TradingEngine:
         )
 
         # -------------------------------------------------
-        # 7️⃣ Store Order Log (ALWAYS log response)
+        # 7️⃣ Store Order Log
         # -------------------------------------------------
         order_id = order_result.get("order_id")
         broker_status = order_result.get("status")
 
         OrderLog.objects.create(
-            signal=signal_log,  # 🔥 linking to SignalLog
+            signal=signal_log,
             order_id=order_id,
             broker_status=broker_status,
             quantity=quantity,
@@ -138,12 +135,119 @@ class TradingEngine:
         )
 
         # -------------------------------------------------
-        # 8️⃣ Mark Signal Executed (Only if successful)
+        # 8️⃣ Final Execution State Mapping
         # -------------------------------------------------
-        if broker_status in ["EXECUTED", "ORDER_SENT"]:
-            signal_log.executed = True
-            signal_log.save()
-            print("✅ Signal marked as executed")
+        broker_status_normalized = (broker_status or "").lower()
+
+        if broker_status_normalized in ["complete", "executed"]:
+            signal_log.execution_status = "EXECUTED"
+
+        elif broker_status_normalized == "rejected":
+            signal_log.execution_status = "REJECTED"
+
+        elif broker_status_normalized in ["error", "failed"]:
+            signal_log.execution_status = "FAILED"
+
+        else:
+            signal_log.execution_status = "ATTEMPTED"
+
+        signal_log.save()
+
+        print(f"📊 Final Execution State: {signal_log.execution_status}")
+
+        return {
+            "signal_data": signal_data,
+            "order_result": order_result,
+        }
+
+
+
+        # # -------------------------------------------------
+        # # 3️⃣ Log Signal
+        # # -------------------------------------------------
+        # signal_log = SignalLog.objects.create(
+        #     stock=stock,
+        #     signal=signal,
+        #     price=last_price,
+        #     ema_short=signal_data.get("ema_short"),
+        #     ema_long=signal_data.get("ema_long"),
+        #     diff=signal_data.get("diff"),
+        #     crossover_timestamp=candle_dt,
+        #     executed=False,
+        #     generated_at=timezone.now()
+        # )
+        #
+        # print(f"\n📊 Signal Logged: {signal} @ {candle_dt}")
+        #
+        # # -------------------------------------------------
+        # # 4️⃣ Skip if No Signal
+        # # -------------------------------------------------
+        # if signal not in ["BUY", "SELL"]:
+        #     return {
+        #         "signal_data": signal_data,
+        #         "order_result": {
+        #             "status": "SKIPPED",
+        #             "reason": "No fresh crossover"
+        #         }
+        #     }
+        #
+        # # -------------------------------------------------
+        # # 5️⃣ Freshness Check (Dynamic)
+        # # -------------------------------------------------
+        # now = timezone.now()
+        # freshness_limit = now - timedelta(
+        #     minutes=strategy.signal_validity_minutes
+        # )
+        #
+        # if candle_dt < freshness_limit:
+        #     return {
+        #         "signal_data": signal_data,
+        #         "order_result": {
+        #             "status": "STALE_SIGNAL",
+        #             "reason": "Signal older than validity window"
+        #         }
+        #     }
+        #
+        # # -------------------------------------------------
+        # # 6️⃣ Execute Order
+        # # -------------------------------------------------
+        # order_result = self.order_service.place_order(
+        #     symbol_token=stock.symbol_token,
+        #     trading_symbol=stock.trading_symbol,
+        #     exchange=stock.exchange,
+        #     signal=signal,
+        #     quantity=quantity,
+        #     last_price=last_price,
+        # )
+        #
+        # # -------------------------------------------------
+        # # 7️⃣ Store Order Log (ALWAYS log response)
+        # # -------------------------------------------------
+        # order_id = order_result.get("order_id")
+        # broker_status = order_result.get("status")
+        #
+        # OrderLog.objects.create(
+        #     signal=signal_log,  # 🔥 linking to SignalLog
+        #     order_id=order_id,
+        #     broker_status=broker_status,
+        #     quantity=quantity,
+        #     order_type="MARKET",
+        #     broker_response=order_result,
+        # )
+        #
+        # # -------------------------------------------------
+        # # 8️⃣ Mark Signal Executed (Only if successful)
+        # # -------------------------------------------------
+        # # if broker_status in ["EXECUTED", "ORDER_SENT"]:
+        # if signal in ["BUY", "SELL"]:
+        #     signal_log.executed = True
+        #     signal_log.save()
+        #     print("✅ Signal marked as executed")
+        #
+        # return {
+        #     "signal_data": signal_data,
+        #     "order_result": order_result,
+        # }
 
 
         # # -------------------------------------------------
