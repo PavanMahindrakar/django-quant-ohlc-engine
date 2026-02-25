@@ -1,7 +1,8 @@
 # options/services/option_chain_service.py
 
 from options.services.instrument_service import InstrumentService
-
+from datetime import datetime
+from options.services.greeks_service import GreeksService
 
 class OptionChainService:
     """
@@ -79,7 +80,7 @@ class OptionChainService:
         # --------------------------------------------
         # 5️⃣ Limit to ATM ± Window (Prevent API Overload)
         # --------------------------------------------
-        contracts_df["strike"] = contracts_df["strike"].astype(float)
+        contracts_df["strike"] = contracts_df["strike"].astype(float) / 100
         contracts_df["strike_diff"] = abs(contracts_df["strike"] - float(spot))
 
         contracts_df = contracts_df.sort_values("strike_diff")
@@ -111,7 +112,7 @@ class OptionChainService:
         # 7️⃣ Map token → market data
         # --------------------------------------------
         token_map = {
-            item["symbolToken"]: item for item in market_data
+            str(item["symbolToken"]): item for item in market_data
         }
 
         # --------------------------------------------
@@ -121,14 +122,42 @@ class OptionChainService:
 
         for _, row in contracts_df.iterrows():
 
-            strike = float(row["strike"]) / 100
+            strike = float(row["strike"])
             token = row["token"]
             # option_type = row["symbol"][-2:]  # CE or PE
             option_type = "CE" if row["symbol"].endswith("CE") else "PE"
             live = token_map.get(str(token), {})
 
             ltp = live.get("ltp", 0)
-            oi = live.get("openInterest", 0)
+            oi = live.get("opnInterest", 0)
+
+            # ---- Greeks Calculation ----
+
+            # Time to expiry
+            expiry_date = datetime.strptime(expiry, "%d%b%Y")
+            today = datetime.now()
+            days_to_expiry = (expiry_date - today).days
+            T = max(days_to_expiry / 365, 0.0001)
+
+            r = 0.06  # risk-free rate assumption
+
+            if ltp > 0:
+                iv = GreeksService.implied_volatility(
+                    spot,
+                    strike,
+                    T,
+                    r,
+                    ltp,
+                    option_type
+                )
+
+                delta = GreeksService.delta(spot, strike, T, r, iv, option_type)
+                gamma = GreeksService.gamma(spot, strike, T, r, iv)
+                theta = GreeksService.theta(spot, strike, T, r, iv, option_type)
+                vega = GreeksService.vega(spot, strike, T, r, iv)
+
+            else:
+                iv = delta = gamma = theta = vega = 0
 
             if strike not in chain:
                 chain[strike] = {
@@ -141,6 +170,11 @@ class OptionChainService:
             chain[strike][option_type] = {
                 "openInterest": int(oi),
                 "lastPrice": float(ltp),
+                "iv": round(iv, 4),
+                "delta": round(delta, 4),
+                "gamma": round(gamma, 6),
+                "theta": round(theta, 4),
+                "vega": round(vega, 4),
             }
 
         return {

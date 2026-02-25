@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ symbol }} Option Chain</title>
+
+    <meta http-equiv="refresh" content="15">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #111827;
+            color: #f9fafb;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h2, h3 {
+            text-align: center;
+            margin: 5px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+        }
+
+        th {
+            background-color: #1f2937;
+            padding: 10px;
+            font-size: 13px;
+            border-bottom: 2px solid #374151;
+        }
+
+        td {
+            padding: 8px;
+            text-align: center;
+            border-bottom: 1px solid #374151;
+            font-size: 13px;
+        }
+
+        tr:hover {
+            background-color: #1f2937;
+        }
+
+        .ce {
+            color: #10b981;
+        }
+
+        .pe {
+            color: #ef4444;
+        }
+
+        .atm {
+            background-color: #1e3a8a;
+            font-weight: bold;
+        }
+
+        .section-header {
+            background-color: #0f172a;
+            color: #9ca3af;
+            font-size: 12px;
+        }
+
+        .strike-col {
+            font-weight: bold;
+            color: #ffffff;
+        }
+    </style>
+</head>
+
+<body>
+
+<h2>{{ symbol }} - {{ expiry }}</h2>
+<h3>Spot: {{ spot }}</h3>
+<div class="footer">Last Updated: {{ timestamp }}</div>
+
+<table>
+
+    <!-- Section Header -->
+    <tr class="section-header">
+        <th colspan="5">CALLS</th>
+        <th>STRIKE</th>
+        <th colspan="5">PUTS</th>
+    </tr>
+
+    <!-- Column Headers -->
+    <tr>
+        <th>OI</th>
+        <th>LTP</th>
+        <th>Δ</th>
+        <th>Θ</th>
+        <th>IV</th>
+
+        <th></th>
+
+        <th>IV</th>
+        <th>Θ</th>
+        <th>Δ</th>
+        <th>LTP</th>
+        <th>OI</th>
+    </tr>
+
+    {% for item in chain %}
+    <tr {% if item.strikePrice|floatformat:0 == spot|floatformat:0 %} class="atm" {% endif %}>
+
+        <!-- CALL SIDE -->
+        <td class="ce">{{ item.CE.openInterest|default:0 }}</td>
+        <td class="ce">{{ item.CE.lastPrice|default:0 }}</td>
+        <td class="ce">{{ item.CE.delta|default:0 }}</td>
+        <td class="ce">{{ item.CE.theta|default:0 }}</td>
+        <td class="ce">{{ item.CE.iv|default:0 }}</td>
+
+        <!-- STRIKE -->
+        <td class="strike-col">{{ item.strikePrice }}</td>
+
+        <!-- PUT SIDE -->
+        <td class="pe">{{ item.PE.iv|default:0 }}</td>
+        <td class="pe">{{ item.PE.theta|default:0 }}</td>
+        <td class="pe">{{ item.PE.delta|default:0 }}</td>
+        <td class="pe">{{ item.PE.lastPrice|default:0 }}</td>
+        <td class="pe">{{ item.PE.openInterest|default:0 }}</td>
+
+    </tr>
+    {% endfor %}
+
+</table>
+
+</body>
+</html>
