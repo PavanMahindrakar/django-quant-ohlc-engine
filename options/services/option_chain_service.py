@@ -98,11 +98,13 @@ class OptionChainService:
         token_map = {
             str(item["symbolToken"]): item for item in market_data
         }
+        # 6️⃣ Previous Snapshot Map
+        previous_map = {}
 
-        # previous_map = {}
-        # if previous_map:
-        #     for item in previous_data:
-        #         previous_map[item["strikePrice"]] = item
+        if previous_data:
+            for item in previous_data:
+                strike_key = round(float(item["strikePrice"]), 2)
+                previous_map[strike_key] = item
         # --------------------------------------------
         # 7️⃣ Build Option Chain + Greeks
         # --------------------------------------------
@@ -124,6 +126,29 @@ class OptionChainService:
             live = token_map.get(token, {})
             ltp = live.get("ltp", 0)
             oi = live.get("opnInterest", 0)
+
+            # ---- Previous comparison ----
+            prev_strike = previous_map.get(round(strike, 2), {})
+            prev_side = prev_strike.get(option_type, {})
+
+            prev_oi = prev_side.get("openInterest", 0)
+            prev_price = prev_side.get("lastPrice", 0)
+
+            oi_change = oi - prev_oi
+            price_change = ltp - prev_price
+
+            # ---- Build-Up Classification ----
+            build_up = "Neutral"
+
+            if prev_oi > 0:  # Avoid false first-run signals
+                if price_change > 0 and oi_change > 0:
+                    build_up = "Long Build-Up"
+                elif price_change < 0 and oi_change > 0:
+                    build_up = "Short Build-Up"
+                elif price_change > 0 and oi_change < 0:
+                    build_up = "Short Covering"
+                elif price_change < 0 and oi_change < 0:
+                    build_up = "Long Unwinding"
 
             # ---- Greeks ----
             if ltp > 0:
@@ -147,6 +172,8 @@ class OptionChainService:
 
             chain[strike][option_type] = {
                 "openInterest": int(oi),
+                "oiChange": int(oi_change),
+                "buildUp": build_up,
                 "lastPrice": float(ltp),
                 "iv": round(iv, 4),
                 "delta": round(delta, 4),

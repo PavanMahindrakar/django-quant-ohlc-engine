@@ -3,7 +3,7 @@
 <head>
     <title>{{ symbol }} Option Chain</title>
 
-    <meta http-equiv="refresh" content="15">
+    <meta http-equiv="refresh" content="300">
 
     <style>
         body {
@@ -85,6 +85,15 @@
             font-weight: bold;
             color: #ffffff;
         }
+
+        .positive { color: #10b981; }
+        .negative { color: #ef4444; }
+
+        .build-long { color: #10b981; font-weight: bold; }
+        .build-short { color: #ef4444; font-weight: bold; }
+        .build-cover { color: #60a5fa; font-weight: bold; }
+        .build-unwind { color: #facc15; font-weight: bold; }
+        .build-neutral { color: #9ca3af; }
     </style>
 </head>
 
@@ -106,8 +115,8 @@
     </span>
 
     <span>Max Pain: <b>{{ max_pain }}</b></span>
-    <span>Resistance (Highest Call OI): <b>{{ highest_call_oi }}</b></span>
-    <span>Support (Highest Put OI): <b>{{ highest_put_oi }}</b></span>
+    <span>Resistance: <b>{{ highest_call_oi }}</b></span>
+    <span>Support: <b>{{ highest_put_oi }}</b></span>
 </div>
 
 <div class="footer">Last Updated: {{ timestamp }}</div>
@@ -116,25 +125,29 @@
 
     <!-- Section Header -->
     <tr class="section-header">
-        <th colspan="5">CALLS</th>
+        <th colspan="7">CALLS</th>
         <th>STRIKE</th>
-        <th colspan="5">PUTS</th>
+        <th colspan="7">PUTS</th>
     </tr>
 
     <!-- Column Headers -->
     <tr>
         <th>OI</th>
+        <th>ΔOI</th>
         <th>LTP</th>
         <th>Δ</th>
         <th>Θ</th>
         <th>IV</th>
+        <th>Build</th>
 
         <th></th>
 
+        <th>Build</th>
         <th>IV</th>
         <th>Θ</th>
         <th>Δ</th>
         <th>LTP</th>
+        <th>ΔOI</th>
         <th>OI</th>
     </tr>
 
@@ -143,19 +156,49 @@
 
         <!-- CALL SIDE -->
         <td class="ce">{{ item.CE.openInterest|default:0 }}</td>
+
+        <td class="{% if item.CE.oiChange > 0 %}positive{% elif item.CE.oiChange < 0 %}negative{% endif %}">
+            {{ item.CE.oiChange|default:0 }}
+        </td>
+
         <td class="ce">{{ item.CE.lastPrice|default:0 }}</td>
         <td class="ce">{{ item.CE.delta|default:0 }}</td>
         <td class="ce">{{ item.CE.theta|default:0 }}</td>
         <td class="ce">{{ item.CE.iv|default:0 }}</td>
 
+        <td class="
+            {% if item.CE.buildUp == 'Long Build-Up' %}build-long
+            {% elif item.CE.buildUp == 'Short Build-Up' %}build-short
+            {% elif item.CE.buildUp == 'Short Covering' %}build-cover
+            {% elif item.CE.buildUp == 'Long Unwinding' %}build-unwind
+            {% else %}build-neutral{% endif %}
+        ">
+            {{ item.CE.buildUp|default:"-" }}
+        </td>
+
         <!-- STRIKE -->
         <td class="strike-col">{{ item.strikePrice }}</td>
 
         <!-- PUT SIDE -->
+        <td class="
+            {% if item.PE.buildUp == 'Long Build-Up' %}build-long
+            {% elif item.PE.buildUp == 'Short Build-Up' %}build-short
+            {% elif item.PE.buildUp == 'Short Covering' %}build-cover
+            {% elif item.PE.buildUp == 'Long Unwinding' %}build-unwind
+            {% else %}build-neutral{% endif %}
+        ">
+            {{ item.PE.buildUp|default:"-" }}
+        </td>
+
         <td class="pe">{{ item.PE.iv|default:0 }}</td>
         <td class="pe">{{ item.PE.theta|default:0 }}</td>
         <td class="pe">{{ item.PE.delta|default:0 }}</td>
         <td class="pe">{{ item.PE.lastPrice|default:0 }}</td>
+
+        <td class="{% if item.PE.oiChange > 0 %}positive{% elif item.PE.oiChange < 0 %}negative{% endif %}">
+            {{ item.PE.oiChange|default:0 }}
+        </td>
+
         <td class="pe">{{ item.PE.openInterest|default:0 }}</td>
 
     </tr>

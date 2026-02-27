@@ -42,13 +42,21 @@ def option_chain_view(request):
     service = AngelOneService()
     service.login()
 
+    # 1️⃣ Get latest snapshot for SAME symbol
+    previous_snapshot = OptionChainSnapshot.objects.filter(
+        symbol="NIFTY"
+    ).order_by("-created_at").first()
+
+    previous_data = previous_snapshot.raw_data if previous_snapshot else None
+
+    # 2️⃣ Fetch new data and pass previous snapshot
     option_service = OptionChainService("NIFTY", service)
-    data = option_service.fetch()
+    data = option_service.fetch(previous_data=previous_data)
 
     if "error" in data:
         return render(request, "options/error.html", {"error": data["error"]})
 
-    # Save snapshot
+    # 3️⃣ Save NEW snapshot AFTER comparison
     snapshot = OptionChainSnapshot.objects.create(
         symbol=data["symbol"],
         expiry=data["data"][0]["expiry"],
@@ -69,4 +77,3 @@ def option_chain_view(request):
     }
 
     return render(request, "options/option_chain.html", context)
-
