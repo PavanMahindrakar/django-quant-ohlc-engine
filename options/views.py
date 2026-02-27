@@ -2,8 +2,7 @@
 
 from django.http import JsonResponse
 from options.engine.option_engine import OptionEngine
-
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from trading.services.angelone_service import AngelOneService
 from options.services.option_chain_service import OptionChainService
 from .models import OptionChainSnapshot
@@ -17,6 +16,7 @@ def option_chain_summary(request):
     result = engine.run(expiry=expiry)
 
     return JsonResponse(result)
+
 
 def option_strike_detail(request):
 
@@ -38,25 +38,45 @@ def option_strike_detail(request):
 
     return JsonResponse(result)
 
+
 def option_chain_view(request):
     service = AngelOneService()
     service.login()
 
-    # 1️⃣ Get latest snapshot for SAME symbol
+    # --------------------------------------------------
+    # 1️⃣ Previous snapshot (for build-up logic)
+    # --------------------------------------------------
     previous_snapshot = OptionChainSnapshot.objects.filter(
         symbol="NIFTY"
     ).order_by("-created_at").first()
 
     previous_data = previous_snapshot.raw_data if previous_snapshot else None
 
-    # 2️⃣ Fetch new data and pass previous snapshot
+    # --------------------------------------------------
+    # 2️⃣ Load Day Baseline snapshot (NEW)
+    # --------------------------------------------------
+    baseline_snapshot = OptionChainSnapshot.objects.filter(
+        symbol="NIFTY",
+        is_day_baseline=True
+    ).first()
+
+    baseline_data = baseline_snapshot.raw_data if baseline_snapshot else None
+
+    # --------------------------------------------------
+    # 3️⃣ Fetch live chain with both previous & baseline
+    # --------------------------------------------------
     option_service = OptionChainService("NIFTY", service)
-    data = option_service.fetch(previous_data=previous_data)
+    data = option_service.fetch(
+        previous_data=previous_data,
+        baseline_data=baseline_data
+    )
 
     if "error" in data:
         return render(request, "options/error.html", {"error": data["error"]})
 
-    # 3️⃣ Save NEW snapshot AFTER comparison
+    # --------------------------------------------------
+    # 4️⃣ Save NEW snapshot
+    # --------------------------------------------------
     snapshot = OptionChainSnapshot.objects.create(
         symbol=data["symbol"],
         expiry=data["data"][0]["expiry"],
@@ -70,6 +90,7 @@ def option_chain_view(request):
         "expiry": data["data"][0]["expiry"],
         "chain": data["data"],
         "timestamp": snapshot.created_at,
+        "snapshot_id": snapshot.id,  # NEW (for baseline button)
         "pcr": data.get("pcr"),
         "max_pain": data.get("max_pain"),
         "highest_call_oi": data.get("highest_call_oi"),
@@ -77,3 +98,16 @@ def option_chain_view(request):
     }
 
     return render(request, "options/option_chain.html", context)
+
+
+# --------------------------------------------------
+# 5️⃣ Set Day Baseline View
+# --------------------------------------------------
+def set_day_baseline(request, snapshot_id):
+    OptionChainSnapshot.objects.filter(symbol="NIFTY").update(is_day_baseline=False)
+
+    snapshot = OptionChainSnapshot.objects.get(id=snapshot_id)
+    snapshot.is_day_baseline = True
+    snapshot.save()
+
+    return redirect("option-chain")

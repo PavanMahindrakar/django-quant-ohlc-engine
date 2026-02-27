@@ -18,7 +18,7 @@ class OptionChainService:
     # FETCH LIVE OPTION CHAIN
     # ==========================================================
 
-    def fetch(self, expiry: str = None, strike_window: int = 20, previous_data = None):
+    def fetch(self, expiry: str = None, strike_window: int = 20, previous_data = None, baseline_data = None):
 
         # --------------------------------------------
         # 1️⃣ Load Instrument Master
@@ -105,6 +105,14 @@ class OptionChainService:
             for item in previous_data:
                 strike_key = round(float(item["strikePrice"]), 2)
                 previous_map[strike_key] = item
+
+        # 6️⃣.1 Baseline Snapshot Map (NEW)
+        baseline_map = {}
+
+        if baseline_data:
+            for item in baseline_data:
+                strike_key = round(float(item["strikePrice"]), 2)
+                baseline_map[strike_key] = item
         # --------------------------------------------
         # 7️⃣ Build Option Chain + Greeks
         # --------------------------------------------
@@ -136,6 +144,21 @@ class OptionChainService:
 
             oi_change = oi - prev_oi
             price_change = ltp - prev_price
+
+            # --------------------------------------------------
+            # ---- Day Baseline Comparison (Intraday ΔOI) ----
+            # --------------------------------------------------
+
+            day_oi_change = 0  # default
+
+            if baseline_data:
+                baseline_strike = baseline_map.get(round(strike, 2), {})
+                baseline_side = baseline_strike.get(option_type, {})
+
+                baseline_oi = baseline_side.get("openInterest", 0)
+
+                # Intraday change = current OI - baseline OI
+                day_oi_change = oi - baseline_oi
 
             # ---- Build-Up Classification ----
             build_up = "Neutral"
@@ -180,6 +203,7 @@ class OptionChainService:
                 "gamma": round(gamma, 6),
                 "theta": round(theta, 4),
                 "vega": round(vega, 4),
+                "dayOiChange": int(day_oi_change),
             }
 
         # --------------------------------------------

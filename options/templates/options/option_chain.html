@@ -119,21 +119,30 @@
     <span>Support: <b>{{ highest_put_oi }}</b></span>
 </div>
 
+<!-- ✅ Baseline Button -->
+<div style="text-align:center; margin-top:10px;">
+    <a href="{% url 'set_day_baseline' snapshot_id %}"
+       style="padding:8px 15px; background:#2563eb; color:white; text-decoration:none; border-radius:5px;">
+        Set As Day Baseline
+    </a>
+</div>
+
 <div class="footer">Last Updated: {{ timestamp }}</div>
 
 <table>
 
     <!-- Section Header -->
     <tr class="section-header">
-        <th colspan="7">CALLS</th>
+        <th colspan="8">CALLS</th>
         <th>STRIKE</th>
-        <th colspan="7">PUTS</th>
+        <th colspan="8">PUTS</th>
     </tr>
 
     <!-- Column Headers -->
     <tr>
         <th>OI</th>
         <th>ΔOI</th>
+        <th>Day ΔOI</th>
         <th>LTP</th>
         <th>Δ</th>
         <th>Θ</th>
@@ -147,6 +156,7 @@
         <th>Θ</th>
         <th>Δ</th>
         <th>LTP</th>
+        <th>Day ΔOI</th>
         <th>ΔOI</th>
         <th>OI</th>
     </tr>
@@ -159,6 +169,10 @@
 
         <td class="{% if item.CE.oiChange > 0 %}positive{% elif item.CE.oiChange < 0 %}negative{% endif %}">
             {{ item.CE.oiChange|default:0 }}
+        </td>
+
+        <td class="{% if item.CE.dayOiChange > 0 %}positive{% elif item.CE.dayOiChange < 0 %}negative{% endif %}">
+            {{ item.CE.dayOiChange|default:0 }}
         </td>
 
         <td class="ce">{{ item.CE.lastPrice|default:0 }}</td>
@@ -194,6 +208,10 @@
         <td class="pe">{{ item.PE.theta|default:0 }}</td>
         <td class="pe">{{ item.PE.delta|default:0 }}</td>
         <td class="pe">{{ item.PE.lastPrice|default:0 }}</td>
+
+        <td class="{% if item.PE.dayOiChange > 0 %}positive{% elif item.PE.dayOiChange < 0 %}negative{% endif %}">
+            {{ item.PE.dayOiChange|default:0 }}
+        </td>
 
         <td class="{% if item.PE.oiChange > 0 %}positive{% elif item.PE.oiChange < 0 %}negative{% endif %}">
             {{ item.PE.oiChange|default:0 }}
