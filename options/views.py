@@ -62,6 +62,10 @@ def option_chain_view(request):
         "expiry": data["data"][0]["expiry"],
         "chain": data["data"],
         "timestamp": snapshot.created_at,
+        "pcr": data.get("pcr"),
+        "max_pain": data.get("max_pain"),
+        "highest_call_oi": data.get("highest_call_oi"),
+        "highest_put_oi": data.get("highest_put_oi"),
     }
 
     return render(request, "options/option_chain.html", context)

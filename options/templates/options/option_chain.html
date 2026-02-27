@@ -19,6 +19,23 @@
             margin: 5px;
         }
 
+        .analytics {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 14px;
+            padding: 12px;
+            background-color: #1f2937;
+            border-radius: 6px;
+        }
+
+        .analytics span {
+            margin: 0 15px;
+        }
+
+        .bullish { color: #10b981; }
+        .bearish { color: #ef4444; }
+        .neutral { color: #facc15; }
+
         .footer {
             text-align: center;
             margin-top: 8px;
@@ -50,13 +67,8 @@
             background-color: #1f2937;
         }
 
-        .ce {
-            color: #10b981;
-        }
-
-        .pe {
-            color: #ef4444;
-        }
+        .ce { color: #10b981; }
+        .pe { color: #ef4444; }
 
         .atm {
             background-color: #1e3a8a;
@@ -80,6 +92,24 @@
 
 <h2>{{ symbol }} - {{ expiry }}</h2>
 <h3>Spot: {{ spot }}</h3>
+
+<div class="analytics">
+    <span>
+        PCR:
+        {% if pcr > 1 %}
+            <span class="bullish">{{ pcr }}</span>
+        {% elif pcr < 1 %}
+            <span class="bearish">{{ pcr }}</span>
+        {% else %}
+            <span class="neutral">{{ pcr }}</span>
+        {% endif %}
+    </span>
+
+    <span>Max Pain: <b>{{ max_pain }}</b></span>
+    <span>Resistance (Highest Call OI): <b>{{ highest_call_oi }}</b></span>
+    <span>Support (Highest Put OI): <b>{{ highest_put_oi }}</b></span>
+</div>
+
 <div class="footer">Last Updated: {{ timestamp }}</div>
 
 <table>
