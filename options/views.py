@@ -6,7 +6,7 @@ from options.services.option_chain_service import OptionChainService
 from .models import OptionChainSnapshot
 from django.utils import timezone
 from datetime import timedelta
-
+from options.services.market_analysis_service import MarketAnalysisService
 
 def option_chain_summary(request):
 
@@ -114,6 +114,7 @@ def option_chain_view(request):
     if "error" in data:
         return render(request, "options/error.html", {"error": data["error"]})
 
+    analysis_summary = MarketAnalysisService.generate_summary(data)
     # --------------------------------------------------
     # Save New Snapshot
     # --------------------------------------------------
@@ -136,6 +137,7 @@ def option_chain_view(request):
         "highest_call_oi": data.get("highest_call_oi"),
         "highest_put_oi": data.get("highest_put_oi"),
         "strong_flows": data.get("strongFlows", []),
+        "analysis_summary": analysis_summary,
     }
 
     return render(request, "options/option_chain.html", context)

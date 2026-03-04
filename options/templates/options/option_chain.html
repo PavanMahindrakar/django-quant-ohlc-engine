@@ -148,6 +148,14 @@
 <div class="footer">Last Updated: {{ timestamp }}</div>
 
 <div class="flow-panel">
+    <h4>🧠 Market Narrative</h4>
+
+    {% for line in analysis_summary %}
+        <div class="flow-item">{{ line }}</div>
+    {% endfor %}
+</div>
+
+<div class="flow-panel">
     <h4 style="margin:0 0 8px 0;">🔥 Strongest 5-Min Flow</h4>
 
     {% if strong_flows %}
