@@ -51,6 +51,18 @@ class MarketAnalysisService:
                 summary.append(f"Key option range: {support} - {resistance}")
 
         # --------------------------------------------------
+        # Call Wall / Put Wall Detection
+        # --------------------------------------------------
+        if resistance:
+            summary.append(f"Call wall forming near {resistance}")
+
+        if support:
+            summary.append(f"Put wall forming near {support}")
+
+        if support and resistance and support != resistance:
+            summary.append(f"Expected option range {support} - {resistance}")
+
+        # --------------------------------------------------
         # Call Writing / Put Writing Detection
         # --------------------------------------------------
         CALL_WRITING_THRESHOLD = 50000
