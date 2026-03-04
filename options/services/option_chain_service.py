@@ -3,6 +3,14 @@ from datetime import datetime
 from options.services.greeks_service import GreeksService
 
 
+# --------------------------------------------------
+# 🔵 NEW: Flow Quality Filters
+# --------------------------------------------------
+MIN_OI_FILTER = 1000
+FLOW_THRESHOLD = 100000
+STRIKE_DISTANCE_LIMIT = 700
+
+
 class OptionChainService:
 
     def __init__(self, symbol: str, broker_service):
@@ -142,6 +150,11 @@ class OptionChainService:
         for _, row in contracts_df.iterrows():
 
             strike = float(row["strike"])
+
+            # 🔵 NEW: Ignore far OTM strikes
+            if abs(strike - spot) > STRIKE_DISTANCE_LIMIT:
+                continue
+
             strike_key = round(strike, 2)
             token = str(row["token"])
             option_type = (
@@ -151,6 +164,10 @@ class OptionChainService:
             live = token_map.get(token, {})
             ltp = float(live.get("ltp", 0) or 0)
             oi = int(live.get("opnInterest", 0) or 0)
+
+            # 🔵 NEW: Ignore illiquid strikes
+            # if oi < MIN_OI_FILTER:
+            #     continue
 
             # Previous
             prev_side = previous_map.get(strike_key, {}).get(option_type, {})
@@ -262,7 +279,7 @@ class OptionChainService:
                 "fiveMinOiChange": five_min_oi_change,
                 "buildUp": build_up,
                 "fiveMinBuildUp": five_min_build_up,
-                "acceleration": acceleration,  # NEW
+                "acceleration": acceleration,
                 "lastPrice": ltp,
                 "iv": round(iv, 4),
                 "delta": round(delta, 4),
@@ -270,8 +287,6 @@ class OptionChainService:
                 "theta": round(theta, 4),
                 "vega": round(vega, 4),
             }
-
-        # Everything below remains EXACTLY unchanged
 
         # --------------------------------------------------
         # Analytics Restored
@@ -329,7 +344,7 @@ class OptionChainService:
                 side_data = strike_data.get(side, {})
                 change = side_data.get("fiveMinOiChange", 0)
 
-                if abs(change) > 0:
+                if abs(change) > FLOW_THRESHOLD:
                     strong_flows.append({
                         "strike": strike_data["strikePrice"],
                         "side": side,
